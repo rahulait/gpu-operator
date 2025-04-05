@@ -1248,7 +1248,8 @@ func TestTransformDCGMExporter(t *testing.T) {
 			description: "transform dcgm exporter",
 			ds: NewDaemonset().
 				WithContainer(corev1.Container{Name: "dcgm-exporter"}).
-				WithContainer(corev1.Container{Name: "dummy"}),
+				WithContainer(corev1.Container{Name: "dummy"}).
+				WithHostPathVolume("pod-resources", "/var/lib/kubelet/pod-resources", nil),
 			cpSpec: &gpuv1.ClusterPolicySpec{
 				DCGMExporter: gpuv1.DCGMExporterSpec{
 					Repository:       "nvcr.io/nvidia/cloud-native",
@@ -1274,7 +1275,9 @@ func TestTransformDCGMExporter(t *testing.T) {
 					{Name: "DCGM_REMOTE_HOSTENGINE_INFO", Value: "nvidia-dcgm:5555"},
 					{Name: "foo", Value: "bar"},
 				},
-			}).WithContainer(corev1.Container{Name: "dummy"}).WithPullSecret("pull-secret").WithRuntimeClassName("nvidia"),
+			}).WithContainer(corev1.Container{Name: "dummy"}).WithPullSecret("pull-secret").
+				WithRuntimeClassName("nvidia").
+				WithHostPathVolume("pod-resources", "/var/lib/kubelet/pod-resources", nil),
 		},
 		{
 			description: "transform dcgm exporter with hostPID enabled",
@@ -1606,6 +1609,32 @@ func TestTransformDCGMExporter(t *testing.T) {
 					},
 				}).
 				WithRuntimeClassName("nvidia"),
+		},
+		{
+			description: "transform dcgm exporter with custom kubelet root",
+			ds: NewDaemonset().
+				WithContainer(corev1.Container{Name: "dcgm-exporter"}).
+				WithHostPathVolume("pod-gpu-resources", "/var/lib/kubelet/pod-resources", nil),
+			cpSpec: &gpuv1.ClusterPolicySpec{
+				HostPaths: gpuv1.HostPathsSpec{
+					KubeletRootDir: "/custom-kubelet",
+				},
+				DCGMExporter: gpuv1.DCGMExporterSpec{
+					Repository:      "nvcr.io/nvidia/cloud-native",
+					Image:           "dcgm-exporter",
+					Version:         "v1.0.0",
+					ImagePullPolicy: "IfNotPresent",
+				},
+			},
+			expectedDs: NewDaemonset().WithContainer(corev1.Container{
+				Name:            "dcgm-exporter",
+				Image:           "nvcr.io/nvidia/cloud-native/dcgm-exporter:v1.0.0",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Env: []corev1.EnvVar{
+					{Name: "DCGM_REMOTE_HOSTENGINE_INFO", Value: "nvidia-dcgm:5555"},
+				},
+			}).WithRuntimeClassName("nvidia").
+				WithHostPathVolume("pod-gpu-resources", "/custom-kubelet/pod-resources", nil),
 		},
 	}
 
