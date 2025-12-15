@@ -177,6 +177,78 @@ spec:
             - name: run-mellanox-drivers
               mountPath: /run/mellanox/drivers
               mountPropagation: HostToContainer
+        - name: k8s-capabilities-list
+          image: ubuntu:24.04
+          imagePullPolicy: IfNotPresent
+          command:
+          - /bin/bash
+          - -c
+          - |
+            set -euo pipefail
+
+            CAP_DIR=/run/nvidia
+            mkdir -p ${CAP_DIR}
+            rm -f ${CAP_DIR}/.driver-capabilities.json
+
+            # Default capabilities
+            GDS=false
+            GDRCOPY=false
+            MOFED=false
+            USEHOSTMOFED=false
+            RDMA=false
+
+            # Environment variables are already injected by operator
+            [ "${GDS_ENABLED:-false}" = "true" ] && GDS=true
+            [ "${GDRCOPY_ENABLED:-false}" = "true" ] && GDRCOPY=true
+            [ "${GPU_DIRECT_RDMA_ENABLED:-false}" = "true" ] && RDMA=true
+            [ "${USE_HOST_MOFED:-false}" = "true" ] && USEHOSTMOFED=true
+            [ "${MOFED_ENABLED:-false}" = "true" ] && MOFED=true
+
+            cat <<EOF > ${CAP_DIR}/.driver-capabilities.json
+            {
+              "gds": ${GDS},
+              "gdrcopy": ${GDRCOPY},
+              "mofed": ${MOFED},
+              "useHostMofed": ${USEHOSTMOFED},
+              "rdma": ${RDMA}
+            }
+            EOF
+
+            echo "Initialized driver capabilities:"
+            cat ${CAP_DIR}/.driver-capabilities.json
+          env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          # always use runc for driver containers
+          - name: NVIDIA_VISIBLE_DEVICES
+            value: void
+          - name: OPERATOR_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          {{- if and (.GPUDirectRDMA) (deref .GPUDirectRDMA.Enabled) }}
+          - name: GPU_DIRECT_RDMA_ENABLED
+            value: "true"
+          {{- if deref .GPUDirectRDMA.UseHostMOFED }}
+          - name: USE_HOST_MOFED
+            value: "true"
+          {{- end }}
+          {{- end }}
+          {{- if and (.GDS) (deref .GDS.Spec.Enabled) }}
+          - name: GDS_ENABLED
+            value: "true"
+          {{- end }}
+          {{- if and (.GDRCopy) (deref .GDRCopy.Spec.Enabled) }}
+          - name: GDRCOPY_ENABLED
+            value: "true"
+          {{- end }}
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: run-nvidia
+              mountPath: /run/nvidia
       containers:
       - image: {{ .Driver.ImagePath }}
         imagePullPolicy: {{ default "IfNotPresent" .Driver.Spec.ImagePullPolicy }}

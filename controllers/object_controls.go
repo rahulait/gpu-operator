@@ -1007,6 +1007,11 @@ func TransformDriver(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec, n C
 		return err
 	}
 
+	err = transformCapabilitiesInitContainer(obj, config)
+	if err != nil {
+		return err
+	}
+
 	// update nvidia-driver container
 	err = transformDriverContainer(obj, config, n)
 	if err != nil {
@@ -2777,6 +2782,34 @@ func transformDriverManagerInitContainer(obj *appsv1.DaemonSet, driverManagerSpe
 		addPullSecrets(&obj.Spec.Template.Spec, driverManagerSpec.ImagePullSecrets)
 	}
 
+	return nil
+}
+
+func transformCapabilitiesInitContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec) error {
+	container := findContainerByName(obj.Spec.Template.Spec.InitContainers, "k8s-capabilities-list")
+
+	if container == nil {
+		return fmt.Errorf("failed to find k8s-capabilities-list initContainer in spec")
+	}
+
+	container.Image = "ubuntu:24.04"
+
+	if config.Driver.GPUDirectRDMA != nil && config.Driver.GPUDirectRDMA.IsEnabled() {
+		setContainerEnv(container, GPUDirectRDMAEnabledEnvName, "true")
+		if config.Driver.GPUDirectRDMA.IsHostMOFED() {
+			setContainerEnv(container, UseHostMOFEDEnvName, "true")
+		}
+	}
+
+	// add env to allow injection of /dev/nvidia-fs and /dev/infiniband devices for GDS
+	if config.GPUDirectStorage != nil && config.GPUDirectStorage.IsEnabled() {
+		setContainerEnv(container, GDSEnabledEnvName, "true")
+		setContainerEnv(container, MOFEDEnabledEnvName, "true")
+	}
+
+	if config.GDRCopy != nil && config.GDRCopy.IsEnabled() {
+		setContainerEnv(container, GDRCopyEnabledEnvName, "true")
+	}
 	return nil
 }
 
