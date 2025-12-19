@@ -32,6 +32,7 @@ import (
 	"github.com/NVIDIA/go-nvlib/pkg/nvpci"
 	devchar "github.com/NVIDIA/nvidia-container-toolkit/cmd/nvidia-ctk/system/create-dev-char-symlinks"
 	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert/yaml"
 	cli "github.com/urfave/cli/v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -506,6 +507,10 @@ func start(ctx context.Context, cli *cli.Command) error {
 		return err
 	}
 
+	return validateComponent(ctx, componentFlag)
+}
+
+func validateComponent(ctx context.Context, componentFlag string) error {
 	switch componentFlag {
 	case "driver":
 		driver := &Driver{
@@ -792,7 +797,49 @@ func (d *Driver) runValidation(silent bool) (driverInfo, error) {
 	if err != nil {
 		return driverInfo{}, err
 	}
+
+	err = validateAdditionalDriverComponents(d.ctx)
+	if err != nil {
+		return driverInfo{}, err
+	}
+
 	return getDriverInfo(false, hostRootFlag, driverInstallDirFlag, driverInstallDirCtrPathFlag), nil
+}
+
+func validateAdditionalDriverComponents(ctx context.Context) error {
+	data, err := os.ReadFile("/run/nvidia/driver/.additional-drivers-enabled")
+	if err != nil {
+		return err
+	}
+
+	supportedFeatures := map[string]string{
+		"GDRCOPY_ENABLED": "gdrcopy",
+		"GDS_ENABLED":     "nvidia-fs",
+	}
+
+	features := map[string]bool{}
+	if err := yaml.Unmarshal(data, &features); err != nil {
+		return err
+	}
+
+	for k, enabled := range features {
+		if !enabled {
+			continue
+		}
+
+		log.Info("Validating additional enabled driver component: " + k)
+		component, ok := supportedFeatures[k]
+		if !ok {
+			log.Infof("unsupported additional driver component: %s, skipping checking it", k)
+			continue
+		}
+
+		if err := validateComponent(ctx, component); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (d *Driver) validate() error {
