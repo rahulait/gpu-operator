@@ -37,7 +37,8 @@ metadata:
             },
             "sandboxWorkloads": {
               "enabled": false,
-              "defaultWorkload": "container"
+              "defaultWorkload": "container",
+              "mode": "kubevirt"
             },
             "driver": {
               "enabled": true,
@@ -136,6 +137,9 @@ metadata:
             "sandboxDevicePlugin": {
               "enabled": true
             },
+            "kataSandboxDevicePlugin": {
+              "enabled": true
+            },
             "vfioManager": {
               "enabled": true
             },
@@ -225,6 +229,8 @@ spec:
       image: ghcr.io/nvidia/k8s-driver-manager:69eec274
     - name: sandbox-device-plugin-image
       image: nvcr.io/nvidia/kubevirt-gpu-device-plugin:v1.4.0@sha256:119de9a331a47203858b99901f44d0c4a8052961b4e60327f4b100d0ab8c9df0
+    - name: kata-sandbox-device-plugin-image
+      image: ghcr.io/nvidia/nvidia-sandbox-device-plugin:3a8894b2
     - name: vgpu-device-manager-image
       image: nvcr.io/nvidia/cloud-native/vgpu-device-manager:v0.4.1@sha256:098c01e11589e08ede9ffb3002d1c3dff424f0f0c5d1bfcbfd54a359073f16dd
     - name: gdrcopy-image
@@ -936,6 +942,8 @@ spec:
                     value: "ghcr.io/nvidia/k8s-driver-manager:69eec274"
                   - name: "SANDBOX_DEVICE_PLUGIN_IMAGE"
                     value: "nvcr.io/nvidia/kubevirt-gpu-device-plugin:v1.4.0@sha256:119de9a331a47203858b99901f44d0c4a8052961b4e60327f4b100d0ab8c9df0"
+                  - name: "KATA_SANDBOX_DEVICE_PLUGIN_IMAGE"
+                    value: "ghcr.io/nvidia/nvidia-sandbox-device-plugin:3a8894b2"
                   - name: "VGPU_DEVICE_MANAGER_IMAGE"
                     value: "nvcr.io/nvidia/cloud-native/vgpu-device-manager:v0.4.1@sha256:098c01e11589e08ede9ffb3002d1c3dff424f0f0c5d1bfcbfd54a359073f16dd"
                   - name: "GDRCOPY_IMAGE"
