@@ -2918,7 +2918,11 @@ func transformGDSContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpe
 		if config.Driver.RepoConfig != nil && config.Driver.RepoConfig.ConfigMapName != "" {
 			// note: transformDriverContainer() will have already created a Volume backed by the ConfigMap.
 			// Only add a VolumeMount for nvidia-fs-ctr.
-			destinationDir, err := getRepoConfigPath()
+			nodeOS, err := getNodeOS(n)
+			if err != nil {
+				return fmt.Errorf("ERROR: failed to get node OS: %w", err)
+			}
+			destinationDir, err := getRepoConfigPath(nodeOS)
 			if err != nil {
 				return fmt.Errorf("ERROR: failed to get destination directory for custom repo config: %w", err)
 			}
@@ -2931,7 +2935,11 @@ func transformGDSContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpe
 
 		// set any custom ssl key/certificate configuration provided
 		if config.Driver.CertConfig != nil && config.Driver.CertConfig.Name != "" {
-			destinationDir, err := getCertConfigPath()
+			nodeOS, err := getNodeOS(n)
+			if err != nil {
+				return fmt.Errorf("ERROR: failed to get node OS: %w", err)
+			}
+			destinationDir, err := getCertConfigPath(nodeOS)
 			if err != nil {
 				return fmt.Errorf("ERROR: failed to get destination directory for ssl key/cert config: %w", err)
 			}
@@ -3011,7 +3019,11 @@ func transformGDRCopyContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolic
 		if config.Driver.RepoConfig != nil && config.Driver.RepoConfig.ConfigMapName != "" {
 			// note: transformDriverContainer() will have already created a Volume backed by the ConfigMap.
 			// Only add a VolumeMount for nvidia-gdrcopy-ctr.
-			destinationDir, err := getRepoConfigPath()
+			nodeOS, err := getNodeOS(n)
+			if err != nil {
+				return fmt.Errorf("ERROR: failed to get node OS: %w", err)
+			}
+			destinationDir, err := getRepoConfigPath(nodeOS)
 			if err != nil {
 				return fmt.Errorf("ERROR: failed to get destination directory for custom repo config: %w", err)
 			}
@@ -3024,7 +3036,11 @@ func transformGDRCopyContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolic
 
 		// set any custom ssl key/certificate configuration provided
 		if config.Driver.CertConfig != nil && config.Driver.CertConfig.Name != "" {
-			destinationDir, err := getCertConfigPath()
+			nodeOS, err := getNodeOS(n)
+			if err != nil {
+				return fmt.Errorf("ERROR: failed to get node OS: %w", err)
+			}
+			destinationDir, err := getCertConfigPath(nodeOS)
 			if err != nil {
 				return fmt.Errorf("ERROR: failed to get destination directory for ssl key/cert config: %w", err)
 			}
@@ -3285,47 +3301,45 @@ func resolveDriverTag(n ClusterPolicyController, driverSpec interface{}) (string
 	return image, nil
 }
 
-// getRepoConfigPath returns the standard OS specific path for repository configuration files
-func getRepoConfigPath() (string, error) {
-	release, err := parseOSRelease()
-	if err != nil {
-		return "", err
+// getNodeOS returns the base OS ID (e.g., "rhel", "ubuntu") for nodes.
+// This is used for config path lookups where paths are the same across OS versions.
+// It reuses kernelFullVersion() to query node labels and extracts the base OS ID.
+func getNodeOS(n ClusterPolicyController) (string, error) {
+	_, osTag, _ := kernelFullVersion(n)
+
+	if osTag == "" {
+		return "", fmt.Errorf("failed to get OS tag from node labels")
 	}
 
-	os := release["ID"]
+	// Extract base OS ID by stripping version suffix from osTag
+	// Examples: "rhel10" -> "rhel", "ubuntu22.04" -> "ubuntu", "rocky9" -> "rocky"
+	osID := strings.TrimRight(osTag, "0123456789.")
+
+	return osID, nil
+}
+
+// getRepoConfigPath returns the standard OS specific path for repository configuration files
+func getRepoConfigPath(os string) (string, error) {
 	if path, ok := RepoConfigPathMap[os]; ok {
 		return path, nil
 	}
-	return "", fmt.Errorf("distribution not supported")
+	return "", fmt.Errorf("repository configuration not supported for distribution %s", os)
 }
 
 // getCertConfigPath returns the standard OS specific path for ssl keys/certificates
-func getCertConfigPath() (string, error) {
-	release, err := parseOSRelease()
-	if err != nil {
-		return "", err
-	}
-
-	os := release["ID"]
+func getCertConfigPath(os string) (string, error) {
 	if path, ok := CertConfigPathMap[os]; ok {
 		return path, nil
 	}
-	return "", fmt.Errorf("distribution not supported")
+	return "", fmt.Errorf("certificate configuration not supported for distribution %s", os)
 }
 
-// getSubscriptionPathsToVolumeSources returns the MountPathToVolumeSource map containing all
-// OS-specific subscription/entitlement paths that need to be mounted in the container.
-func getSubscriptionPathsToVolumeSources() (MountPathToVolumeSource, error) {
-	release, err := parseOSRelease()
-	if err != nil {
-		return nil, err
-	}
-
-	os := release["ID"]
+// getSubscriptionPathsToVolumeSources returns the standard OS specific subscription/entitlement paths
+func getSubscriptionPathsToVolumeSources(os string) (MountPathToVolumeSource, error) {
 	if pathToVolumeSource, ok := SubscriptionPathMap[os]; ok {
 		return pathToVolumeSource, nil
 	}
-	return nil, fmt.Errorf("distribution not supported")
+	return nil, fmt.Errorf("subscription paths not supported for distribution %s", os)
 }
 
 // createConfigMapVolumeMounts creates a VolumeMount for each key
@@ -3555,13 +3569,17 @@ func transformDriverContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicy
 
 	// set any custom repo configuration provided when using runfile based driver installation
 	if config.Driver.RepoConfig != nil && config.Driver.RepoConfig.ConfigMapName != "" {
-		destinationDir, err := getRepoConfigPath()
+		nodeOS, err := getNodeOS(n)
 		if err != nil {
-			return fmt.Errorf("ERROR: failed to get destination directory for custom repo config: %v", err)
+			return fmt.Errorf("ERROR: failed to get node OS: %w", err)
+		}
+		destinationDir, err := getRepoConfigPath(nodeOS)
+		if err != nil {
+			return fmt.Errorf("ERROR: failed to get destination directory for custom repo config: %w", err)
 		}
 		volumeMounts, itemsToInclude, err := createConfigMapVolumeMounts(n, config.Driver.RepoConfig.ConfigMapName, destinationDir)
 		if err != nil {
-			return fmt.Errorf("ERROR: failed to create ConfigMap VolumeMounts for custom repo config: %v", err)
+			return fmt.Errorf("ERROR: failed to create ConfigMap VolumeMounts for custom repo config: %w", err)
 		}
 		driverContainer.VolumeMounts = append(driverContainer.VolumeMounts, volumeMounts...)
 		podSpec.Volumes = append(podSpec.Volumes, createConfigMapVolume(config.Driver.RepoConfig.ConfigMapName, itemsToInclude))
@@ -3569,9 +3587,13 @@ func transformDriverContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicy
 
 	// set any custom ssl key/certificate configuration provided
 	if config.Driver.CertConfig != nil && config.Driver.CertConfig.Name != "" {
-		destinationDir, err := getCertConfigPath()
+		nodeOS, err := getNodeOS(n)
 		if err != nil {
-			return fmt.Errorf("ERROR: failed to get destination directory for custom repo config: %v", err)
+			return fmt.Errorf("ERROR: failed to get node OS: %w", err)
+		}
+		destinationDir, err := getCertConfigPath(nodeOS)
+		if err != nil {
+			return fmt.Errorf("ERROR: failed to get destination directory for custom cert config: %w", err)
 		}
 		volumeMounts, itemsToInclude, err := createConfigMapVolumeMounts(n, config.Driver.CertConfig.Name, destinationDir)
 		if err != nil {
@@ -3597,9 +3619,13 @@ func transformDriverContainer(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicy
 	// set up subscription entitlements for RHEL(using K8s with a non-CRIO runtime) and SLES
 	if (release["ID"] == "rhel" && n.openshift == "" && n.runtime != gpuv1.CRIO) || release["ID"] == "sles" || release["ID"] == "sl-micro" {
 		n.logger.Info("Mounting subscriptions into the driver container", "OS", release["ID"])
-		pathToVolumeSource, err := getSubscriptionPathsToVolumeSources()
+		nodeOS, err := getNodeOS(n)
 		if err != nil {
-			return fmt.Errorf("ERROR: failed to get path items for subscription entitlements: %v", err)
+			return fmt.Errorf("ERROR: failed to get node OS: %w", err)
+		}
+		pathToVolumeSource, err := getSubscriptionPathsToVolumeSources(nodeOS)
+		if err != nil {
+			return fmt.Errorf("ERROR: failed to get path items for subscription entitlements: %w", err)
 		}
 
 		// sort host path volumes to ensure ordering is preserved when adding to pod spec
