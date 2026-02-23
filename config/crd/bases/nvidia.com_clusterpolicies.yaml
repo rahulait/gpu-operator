@@ -1812,7 +1812,8 @@ spec:
                     type: object
                   defaultRuntime:
                     default: docker
-                    description: Runtime defines container runtime type
+                    description: 'Deprecated: DefaultRuntime is no longer used by
+                      the gpu-operator. This is instead, detected at runtime.'
                     enum:
                     - docker
                     - crio

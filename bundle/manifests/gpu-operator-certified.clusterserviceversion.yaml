@@ -29,11 +29,11 @@ metadata:
           },
           "spec": {
             "operator": {
-              "defaultRuntime": "crio",
               "use_ocp_driver_toolkit": true
             },
             "cdi": {
-              "enabled": true
+              "enabled": true,
+              "nriPluginEnabled": false
             },
             "sandboxWorkloads": {
               "enabled": false,
