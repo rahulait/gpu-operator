@@ -139,6 +139,9 @@ metadata:
             "vfioManager": {
               "enabled": true
             },
+            "ccManager": {
+              "enabled": true
+            },
             "gds": {
               "enabled": false
             },
@@ -223,6 +226,8 @@ spec:
     # TODO: update to a k8s-driver-manager image from nvcr.io once the next version is published
     - name: vfio-manager-image
       image: ghcr.io/nvidia/k8s-driver-manager:69eec274
+    - name: cc-manager-image
+      image: ghcr.io/nvidia/k8s-cc-manager:125e77c7-distroless
     - name: sandbox-device-plugin-image
       image: nvcr.io/nvidia/kubevirt-gpu-device-plugin:v1.4.0@sha256:119de9a331a47203858b99901f44d0c4a8052961b4e60327f4b100d0ab8c9df0
     - name: vgpu-device-manager-image
@@ -934,6 +939,8 @@ spec:
                   # TODO: update to a k8s-driver-manager image from nvcr.io once the next version is published
                   - name: "VFIO_MANAGER_IMAGE"
                     value: "ghcr.io/nvidia/k8s-driver-manager:69eec274"
+                  - name: "CC_MANAGER_IMAGE"
+                    value: "ghcr.io/nvidia/k8s-cc-manager:125e77c7-distroless"
                   - name: "SANDBOX_DEVICE_PLUGIN_IMAGE"
                     value: "nvcr.io/nvidia/kubevirt-gpu-device-plugin:v1.4.0@sha256:119de9a331a47203858b99901f44d0c4a8052961b4e60327f4b100d0ab8c9df0"
                   - name: "VGPU_DEVICE_MANAGER_IMAGE"
