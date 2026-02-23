@@ -4035,10 +4035,22 @@ func TestTransformDriverWithAdditionalConfig(t *testing.T) {
 				Name:            "nvidia-driver-ctr",
 				Image:           "nvcr.io/nvidia/driver:580.126.16-ubuntu24.04",
 				ImagePullPolicy: corev1.PullIfNotPresent,
+				Env: []corev1.EnvVar{
+					{
+						Name:  "DRIVER_CONFIG_DIGEST",
+						Value: "2050622367",
+					},
+				},
 			}).WithInitContainer(corev1.Container{
 				Name:            "k8s-driver-manager",
 				Image:           "nvcr.io/nvidia/cloud-native/k8s-driver-manager:v0.8.0",
 				ImagePullPolicy: corev1.PullIfNotPresent,
+				Env: []corev1.EnvVar{
+					{
+						Name:  "DRIVER_CONFIG_DIGEST",
+						Value: "2050622367",
+					},
+				},
 			}).WithVolume(corev1.Volume{
 				Name: "test-repo-config",
 				VolumeSource: corev1.VolumeSource{
