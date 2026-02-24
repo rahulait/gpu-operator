@@ -409,7 +409,7 @@ jobs:
       - name: Install regctl
         uses: regclient/actions/regctl-installer@148669fe4b19151fcab6e00c6df2db43b9e2b097
         with:
-          release: v0.11.1
+          release: v0.11.2
       - name: Set environment variables
         id: vars
         run: |
