@@ -2778,6 +2778,84 @@ func TestTransformSandboxValidator(t *testing.T) {
 	}
 }
 
+func TestTransformKataDevicePlugin(t *testing.T) {
+	resources := corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("128Mi"),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("50m"),
+			corev1.ResourceMemory: resource.MustParse("64Mi"),
+		},
+	}
+	testCases := []struct {
+		description string
+		ds          Daemonset
+		cpSpec      *gpuv1.ClusterPolicySpec
+		expectedDs  Daemonset
+	}{
+		{
+			description: "transform kata device plugin",
+			ds: NewDaemonset().
+				WithInitContainer(corev1.Container{Name: "vfio-pci-validation"}).
+				WithContainer(corev1.Container{Name: "nvidia-kata-sandbox-device-plugin-ctr"}),
+			cpSpec: &gpuv1.ClusterPolicySpec{
+				Validator: gpuv1.ValidatorSpec{
+					Repository:       "nvcr.io/nvidia/cloud-native",
+					Image:            "gpu-operator-validator",
+					Version:          "v1.0.0",
+					ImagePullPolicy:  "IfNotPresent",
+					ImagePullSecrets: []string{"pull-secret"},
+				},
+				KataSandboxDevicePlugin: gpuv1.KataDevicePluginSpec{
+					ImageSpec: gpuv1.ImageSpec{
+						Repository:      "nvcr.io/nvidia/cloud-native",
+						Image:           "kata-sandbox-device-plugin",
+						Version:         "v1.0.0",
+						ImagePullPolicy: "IfNotPresent",
+					},
+					ComponentCommonSpec: gpuv1.ComponentCommonSpec{
+						ImagePullSecrets: []string{"pull-secret"},
+						Resources:        &gpuv1.ResourceRequirements{Limits: resources.Limits, Requests: resources.Requests},
+						Args:             []string{"--test-flag"},
+						Env:              []gpuv1.EnvVar{{Name: "foo", Value: "bar"}},
+					},
+				},
+			},
+			expectedDs: NewDaemonset().
+				WithInitContainer(corev1.Container{
+					Name:            "vfio-pci-validation",
+					Image:           "nvcr.io/nvidia/cloud-native/gpu-operator-validator:v1.0.0",
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					SecurityContext: &corev1.SecurityContext{
+						RunAsUser: rootUID,
+					},
+				}).
+				WithContainer(corev1.Container{
+					Name:            "nvidia-kata-sandbox-device-plugin-ctr",
+					Image:           "nvcr.io/nvidia/cloud-native/kata-sandbox-device-plugin:v1.0.0",
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					Args:            []string{"--test-flag"},
+					Env:             []corev1.EnvVar{{Name: "foo", Value: "bar"}},
+					Resources:       resources,
+				}).
+				WithPullSecret("pull-secret"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			err := TransformKataDevicePlugin(tc.ds.DaemonSet, tc.cpSpec, ClusterPolicyController{
+				runtime: gpuv1.Containerd,
+				logger:  ctrl.Log.WithName("test"),
+			})
+			require.NoError(t, err)
+			require.EqualValues(t, tc.expectedDs, tc.ds)
+		})
+	}
+}
+
 func TestTransformNodeStatusExporter(t *testing.T) {
 	testCases := []struct {
 		description   string
