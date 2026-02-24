@@ -229,3 +229,145 @@ func TestValidateClusterPolicySpec(t *testing.T) {
 		})
 	}
 }
+
+func TestGetEffectiveStateLabels(t *testing.T) {
+	// getEffectiveStateLabels returns labels for workload config and sandbox mode.
+	// For container and vm-vgpu, mode has no effect. For vm-passthrough, mode selects
+	// sandbox-device-plugin (kubevirt) vs kata-device-plugin (kata).
+	t.Run("container", func(t *testing.T) {
+		got := getEffectiveStateLabels(gpuWorkloadConfigContainer, "kubevirt")
+		require.NotNil(t, got)
+		require.Contains(t, got, "nvidia.com/gpu.deploy.device-plugin")
+		require.Equal(t, "true", got["nvidia.com/gpu.deploy.device-plugin"])
+	})
+	t.Run("vm-vgpu", func(t *testing.T) {
+		got := getEffectiveStateLabels(gpuWorkloadConfigVMVgpu, "kata")
+		require.NotNil(t, got)
+		require.Contains(t, got, "nvidia.com/gpu.deploy.sandbox-device-plugin")
+		require.Equal(t, "true", got["nvidia.com/gpu.deploy.sandbox-device-plugin"])
+	})
+	// vm-passthrough: test kubevirt first (map has sandbox-device-plugin), then kata.
+	t.Run("vm-passthrough-kubevirt", func(t *testing.T) {
+		got := getEffectiveStateLabels(gpuWorkloadConfigVMPassthrough, string(gpuv1.KubeVirt))
+		require.NotNil(t, got)
+		require.Contains(t, got, kubevirtDevicePluginDeployLabelKey)
+		require.Equal(t, "true", got[kubevirtDevicePluginDeployLabelKey])
+		require.NotContains(t, got, kataDevicePluginDeployLabelKey)
+	})
+	t.Run("vm-passthrough-kata", func(t *testing.T) {
+		got := getEffectiveStateLabels(gpuWorkloadConfigVMPassthrough, string(gpuv1.Kata))
+		require.NotNil(t, got)
+		require.Contains(t, got, kataDevicePluginDeployLabelKey)
+		require.Equal(t, "true", got[kataDevicePluginDeployLabelKey])
+		require.NotContains(t, got, kubevirtDevicePluginDeployLabelKey)
+	})
+	t.Run("invalid config", func(t *testing.T) {
+		got := getEffectiveStateLabels("invalid", "kubevirt")
+		require.Nil(t, got)
+	})
+}
+
+func TestRemoveAllGPUStateLabels(t *testing.T) {
+	// removeAllGPUStateLabels removes all gpuStateLabels keys plus kata-device-plugin and mig-manager.
+	t.Run("removes kata device plugin label", func(t *testing.T) {
+		labels := map[string]string{
+			kataDevicePluginDeployLabelKey: "true",
+			"other":                        "keep",
+		}
+		modified := removeAllGPUStateLabels(labels)
+		require.True(t, modified)
+		require.NotContains(t, labels, kataDevicePluginDeployLabelKey)
+		require.Equal(t, "keep", labels["other"])
+	})
+	t.Run("removes sandbox deploy label", func(t *testing.T) {
+		labels := map[string]string{
+			kubevirtDevicePluginDeployLabelKey: "true",
+		}
+		modified := removeAllGPUStateLabels(labels)
+		require.True(t, modified)
+		require.Empty(t, labels[kubevirtDevicePluginDeployLabelKey])
+	})
+}
+
+func TestIsStateEnabled_SandboxAndKataDevicePlugin(t *testing.T) {
+	boolTrue := ptr.To(true)
+	boolFalse := ptr.To(false)
+	tests := []struct {
+		name           string
+		sandboxEnabled bool
+		spec           gpuv1.ClusterPolicySpec
+		stateName      string
+		wantEnabled    bool
+	}{
+		{
+			name:           "state-sandbox-device-plugin enabled when sandbox+plugin+mode kubevirt",
+			sandboxEnabled: true,
+			spec: gpuv1.ClusterPolicySpec{
+				SandboxWorkloads:    gpuv1.SandboxWorkloadsSpec{Enabled: boolTrue, Mode: "kubevirt"},
+				SandboxDevicePlugin: gpuv1.SandboxDevicePluginSpec{Enabled: boolTrue},
+			},
+			stateName:   "state-sandbox-device-plugin",
+			wantEnabled: true,
+		},
+		{
+			name:           "state-sandbox-device-plugin disabled when mode kata",
+			sandboxEnabled: true,
+			spec: gpuv1.ClusterPolicySpec{
+				SandboxWorkloads:    gpuv1.SandboxWorkloadsSpec{Enabled: boolTrue, Mode: "kata"},
+				SandboxDevicePlugin: gpuv1.SandboxDevicePluginSpec{Enabled: boolTrue},
+			},
+			stateName:   "state-sandbox-device-plugin",
+			wantEnabled: false,
+		},
+		{
+			name:           "state-kata-device-plugin enabled when sandbox+kata plugin+mode kata",
+			sandboxEnabled: true,
+			spec: gpuv1.ClusterPolicySpec{
+				SandboxWorkloads:        gpuv1.SandboxWorkloadsSpec{Enabled: boolTrue, Mode: "kata"},
+				KataSandboxDevicePlugin: gpuv1.KataDevicePluginSpec{ComponentCommonSpec: gpuv1.ComponentCommonSpec{Enabled: boolTrue}},
+			},
+			stateName:   "state-kata-device-plugin",
+			wantEnabled: true,
+		},
+		{
+			name:           "state-kata-device-plugin disabled when mode kubevirt",
+			sandboxEnabled: true,
+			spec: gpuv1.ClusterPolicySpec{
+				SandboxWorkloads:        gpuv1.SandboxWorkloadsSpec{Enabled: boolTrue, Mode: "kubevirt"},
+				KataSandboxDevicePlugin: gpuv1.KataDevicePluginSpec{ComponentCommonSpec: gpuv1.ComponentCommonSpec{Enabled: boolTrue}},
+			},
+			stateName:   "state-kata-device-plugin",
+			wantEnabled: false,
+		},
+		{
+			name:           "state-kata-device-plugin disabled when KataSandboxDevicePlugin.Enabled false",
+			sandboxEnabled: true,
+			spec: gpuv1.ClusterPolicySpec{
+				SandboxWorkloads:        gpuv1.SandboxWorkloadsSpec{Enabled: boolTrue, Mode: "kata"},
+				KataSandboxDevicePlugin: gpuv1.KataDevicePluginSpec{ComponentCommonSpec: gpuv1.ComponentCommonSpec{Enabled: boolFalse}},
+			},
+			stateName:   "state-kata-device-plugin",
+			wantEnabled: false,
+		},
+		{
+			name:           "state-kata-device-plugin disabled when sandbox workloads disabled",
+			sandboxEnabled: false,
+			spec: gpuv1.ClusterPolicySpec{
+				SandboxWorkloads:        gpuv1.SandboxWorkloadsSpec{Enabled: boolTrue, Mode: "kata"},
+				KataSandboxDevicePlugin: gpuv1.KataDevicePluginSpec{ComponentCommonSpec: gpuv1.ComponentCommonSpec{Enabled: boolTrue}},
+			},
+			stateName:   "state-kata-device-plugin",
+			wantEnabled: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			n := ClusterPolicyController{
+				singleton:      &gpuv1.ClusterPolicy{Spec: tc.spec},
+				sandboxEnabled: tc.sandboxEnabled,
+			}
+			got := n.isStateEnabled(tc.stateName)
+			require.Equal(t, tc.wantEnabled, got, "isStateEnabled(%q)", tc.stateName)
+		})
+	}
+}
