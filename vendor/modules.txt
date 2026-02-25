@@ -27,9 +27,6 @@ github.com/NVIDIA/go-nvlib/pkg/nvpci
 github.com/NVIDIA/go-nvlib/pkg/nvpci/bytes
 github.com/NVIDIA/go-nvlib/pkg/nvpci/mmio
 github.com/NVIDIA/go-nvlib/pkg/pciids
-# github.com/NVIDIA/go-nvml v0.13.0-1.0.20260212130905-92cf8c963449
-## explicit; go 1.20
-github.com/NVIDIA/go-nvml/pkg/dl
 # github.com/NVIDIA/k8s-kata-manager v0.2.3
 ## explicit; go 1.23.0
 github.com/NVIDIA/k8s-kata-manager/api/v1alpha1/config
@@ -39,7 +36,7 @@ github.com/NVIDIA/k8s-operator-libs/api/upgrade/v1alpha1
 github.com/NVIDIA/k8s-operator-libs/pkg/consts
 github.com/NVIDIA/k8s-operator-libs/pkg/crdutil
 github.com/NVIDIA/k8s-operator-libs/pkg/upgrade
-# github.com/NVIDIA/nvidia-container-toolkit v1.19.0-rc.4
+# github.com/NVIDIA/nvidia-container-toolkit v1.19.0-rc.5
 ## explicit; go 1.25.0
 github.com/NVIDIA/nvidia-container-toolkit/cmd/nvidia-ctk/system/create-dev-char-symlinks
 github.com/NVIDIA/nvidia-container-toolkit/internal/devices

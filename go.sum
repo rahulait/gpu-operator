@@ -14,14 +14,12 @@ github.com/Mellanox/maintenance-operator/api v0.3.0 h1:TX+QflSZSOzinodbFdDK+2avE
 github.com/Mellanox/maintenance-operator/api v0.3.0/go.mod h1:hJ+3RfMK82wT9BstT81bWA+6ZUy/zG6UzO5VzmkQfXg=
 github.com/NVIDIA/go-nvlib v0.9.1-0.20251202135446-d0f42ba016dd h1:MC1w/VYuo9Zt0se4SSx9BVid4a46ai+voN3knRvVWjE=
 github.com/NVIDIA/go-nvlib v0.9.1-0.20251202135446-d0f42ba016dd/go.mod h1:7mzx9FSdO9fXWP9NKuZmWkCwhkEcSWQFe2tmFwtLb9c=
-github.com/NVIDIA/go-nvml v0.13.0-1.0.20260212130905-92cf8c963449 h1:UrArFAaPhj9av2yzEN35CvzWw68BeQjp2MaQFUIoJSU=
-github.com/NVIDIA/go-nvml v0.13.0-1.0.20260212130905-92cf8c963449/go.mod h1:ahi2psRYoa+wYUBIrZPRO+wJs9lcvMhxSSkjjvsJJNQ=
 github.com/NVIDIA/k8s-kata-manager v0.2.3 h1:d5+gRFqU5el/fKMXhHUaPY7haj+dbHL4nDsO/q05LBo=
 github.com/NVIDIA/k8s-kata-manager v0.2.3/go.mod h1:xx5OUiMsHyKbyX0JjKHqAftvqS8vx00LFn/5EaMdtB4=
 github.com/NVIDIA/k8s-operator-libs v0.0.0-20260215183545-a0a0256b9c5e h1:UFtf0yFPZgUpXpniVBLSBZCsIrCg11QzpegDTKflfAI=
 github.com/NVIDIA/k8s-operator-libs v0.0.0-20260215183545-a0a0256b9c5e/go.mod h1:IEWCbF8AgksJyr7hjf2VOlXDI7HPDCiM/Aanxr4Lyyw=
-github.com/NVIDIA/nvidia-container-toolkit v1.19.0-rc.4 h1:t5xyRpHl0/dChQMD2BLjpDZGIMyCikGJ6+5lRo70mmg=
-github.com/NVIDIA/nvidia-container-toolkit v1.19.0-rc.4/go.mod h1:4aDFESAMdSDUGqFD6q3CBRaScL1ZNbMVDifD67cPxUw=
+github.com/NVIDIA/nvidia-container-toolkit v1.19.0-rc.5 h1:85SU3hroKQ201OnbryzP7BKSYyLb40OYto3x2iBSFQ8=
+github.com/NVIDIA/nvidia-container-toolkit v1.19.0-rc.5/go.mod h1:4aDFESAMdSDUGqFD6q3CBRaScL1ZNbMVDifD67cPxUw=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=

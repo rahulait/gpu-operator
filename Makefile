@@ -203,13 +203,13 @@ goimports:
 lint:
 	golangci-lint run ./...
 
-BUILD_FLAGS = -ldflags "-extldflags=-Wl,-z,lazy -s -w -X $(VERSION_PKG).gitCommit=$(GIT_COMMIT) -X $(VERSION_PKG).version=$(VERSION)"
+BUILD_FLAGS = -ldflags "-s -w -X $(VERSION_PKG).gitCommit=$(GIT_COMMIT) -X $(VERSION_PKG).version=$(VERSION)"
 build:
 	go build $(BUILD_FLAGS) ./...
 
 cmds: $(CMD_TARGETS)
 $(CMD_TARGETS): cmd-%:
-	CGO_ENABLED=1 GOOS=$(GOOS) \
+	CGO_ENABLED=0 GOOS=$(GOOS) \
 		go build $(BUILD_FLAGS) $(COMMAND_BUILD_OPTIONS) $(MODULE)/cmd/$(*)
 
 sync-crds:
