@@ -754,6 +754,43 @@ func TestApplyCommonDaemonSetConfig(t *testing.T) {
 	}
 }
 
+func TestApplyHostNetworkConfig(t *testing.T) {
+	tests := []struct {
+		name            string
+		hostNetwork     *bool
+		expectEnabled   bool
+		expectDNSPolicy corev1.DNSPolicy
+	}{
+		{
+			name:            "hostNetwork nil, should not set hostNetwork",
+			hostNetwork:     nil,
+			expectEnabled:   false,
+			expectDNSPolicy: "",
+		},
+		{
+			name:            "hostNetwork true, should set hostNetwork and DNSPolicy",
+			hostNetwork:     ptr.To(true),
+			expectEnabled:   true,
+			expectDNSPolicy: corev1.DNSClusterFirstWithHostNet,
+		},
+		{
+			name:            "hostNetwork false, should not set hostNetwork",
+			hostNetwork:     ptr.To(false),
+			expectEnabled:   false,
+			expectDNSPolicy: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			podSpec := &corev1.PodSpec{}
+			applyHostNetworkConfig(podSpec, tt.hostNetwork)
+			require.Equal(t, tt.expectEnabled, podSpec.HostNetwork)
+			require.Equal(t, tt.expectDNSPolicy, podSpec.DNSPolicy)
+		})
+	}
+}
+
 func TestApplyCommonDaemonsetMetadata(t *testing.T) {
 	testCases := []struct {
 		description string

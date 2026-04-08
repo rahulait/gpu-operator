@@ -53,6 +53,15 @@ import (
 	"github.com/NVIDIA/gpu-operator/internal/utils"
 )
 
+// applyHostNetworkConfig sets hostNetwork and the corresponding DNSPolicy on a pod spec
+// if the provided hostNetwork bool pointer is non-nil and true.
+func applyHostNetworkConfig(podSpec *corev1.PodSpec, hostNetwork *bool) {
+	if hostNetwork != nil && *hostNetwork {
+		podSpec.HostNetwork = true
+		podSpec.DNSPolicy = corev1.DNSClusterFirstWithHostNet
+	}
+}
+
 const (
 	// DefaultContainerdConfigFile indicates default config file path for containerd
 	DefaultContainerdConfigFile = "/etc/containerd/config.toml"
@@ -927,6 +936,9 @@ func TransformGPUDiscoveryPlugin(obj *appsv1.DaemonSet, config *gpuv1.ClusterPol
 	// update env required for MIG support
 	applyMIGConfiguration(&(obj.Spec.Template.Spec.Containers[0]), config.MIG.Strategy)
 
+	// set hostNetwork for gpu-feature-discovery if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.GPUFeatureDiscovery.HostNetwork)
+
 	return nil
 }
 
@@ -1033,6 +1045,9 @@ func TransformDriver(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec, n C
 		setContainerEnv(driverToolkitContainer, "DRIVER_CONFIG_DIGEST", configDigest)
 	}
 
+	// set hostNetwork for driver if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.Driver.HostNetwork)
+
 	return nil
 }
 
@@ -1055,6 +1070,9 @@ func TransformVGPUManager(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec
 	if err != nil {
 		return fmt.Errorf("failed to transform the Driver Toolkit container: %s", err)
 	}
+
+	// set hostNetwork for vgpu-manager if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.VGPUManager.HostNetwork)
 
 	return nil
 }
@@ -1318,6 +1336,9 @@ func TransformToolkit(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec, n 
 		return fmt.Errorf("error transforming toolkit daemonset : %w", err)
 	}
 
+	// set hostNetwork for toolkit if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.Toolkit.HostNetwork)
+
 	return nil
 }
 
@@ -1552,6 +1573,9 @@ func TransformDevicePlugin(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpe
 		}
 	}
 
+	// set hostNetwork for device-plugin if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.DevicePlugin.HostNetwork)
+
 	return nil
 }
 
@@ -1621,6 +1645,9 @@ func TransformMPSControlDaemon(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolic
 		}
 	}
 
+	// set hostNetwork for mps-control-daemon if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.DevicePlugin.HostNetwork)
+
 	return nil
 }
 
@@ -1662,6 +1689,10 @@ func TransformSandboxDevicePlugin(obj *appsv1.DaemonSet, config *gpuv1.ClusterPo
 			setContainerEnv(&(obj.Spec.Template.Spec.Containers[0]), env.Name, env.Value)
 		}
 	}
+
+	// set hostNetwork for sandbox-device-plugin if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.SandboxDevicePlugin.HostNetwork)
+
 	return nil
 }
 
@@ -1696,6 +1727,10 @@ func TransformKataDevicePlugin(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolic
 			setContainerEnv(&(obj.Spec.Template.Spec.Containers[0]), env.Name, env.Value)
 		}
 	}
+
+	// set hostNetwork for kata-device-plugin if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.KataSandboxDevicePlugin.HostNetwork)
+
 	return nil
 }
 
@@ -1857,6 +1892,9 @@ func TransformDCGM(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec, n Clu
 	setNRIPluginAnnotation(&obj.Spec.Template.ObjectMeta, &config.CDI, obj.Spec.Template.Spec.Containers[0].Name)
 	setRuntimeClassName(&obj.Spec.Template.Spec, config, n.runtime)
 
+	// set hostNetwork for dcgm if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.DCGM.HostNetwork)
+
 	return nil
 }
 
@@ -1950,6 +1988,9 @@ func TransformMIGManager(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec,
 		}
 	}
 
+	// set hostNetwork for mig-manager if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.MIGManager.HostNetwork)
+
 	return nil
 }
 
@@ -2024,6 +2065,9 @@ func TransformKataManager(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec
 		return fmt.Errorf("error transforming kata-manager daemonset : %w", err)
 	}
 
+	// set hostNetwork for kata-manager if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.KataManager.HostNetwork)
+
 	return nil
 }
 
@@ -2071,6 +2115,9 @@ func TransformVFIOManager(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec
 		}
 	}
 
+	// set hostNetwork for vfio-manager if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.VFIOManager.HostNetwork)
+
 	return nil
 }
 
@@ -2116,6 +2163,9 @@ func TransformCCManager(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec, 
 			setContainerEnv(&(obj.Spec.Template.Spec.Containers[0]), env.Name, env.Value)
 		}
 	}
+
+	// set hostNetwork for cc-manager if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.CCManager.HostNetwork)
 
 	return nil
 }
@@ -2183,6 +2233,9 @@ func TransformVGPUDeviceManager(obj *appsv1.DaemonSet, config *gpuv1.ClusterPoli
 	}
 	setContainerEnv(&(obj.Spec.Template.Spec.Containers[0]), "DEFAULT_VGPU_CONFIG", defaultConfig)
 
+	// set hostNetwork for vgpu-device-manager if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.VGPUDeviceManager.HostNetwork)
+
 	return nil
 }
 
@@ -2234,6 +2287,9 @@ func TransformValidator(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpec, 
 		n.logger.Info("WARN: errors transforming the validator containers: %v", validatorErr)
 	}
 
+	// set hostNetwork for validator if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.Validator.HostNetwork)
+
 	return nil
 }
 
@@ -2262,6 +2318,9 @@ func TransformSandboxValidator(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolic
 	if validatorErr != nil {
 		n.logger.Info("WARN: errors transforming the validator containers: %v", validatorErr)
 	}
+
+	// set hostNetwork for sandbox-validator if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.Validator.HostNetwork)
 
 	return nil
 }
@@ -2459,6 +2518,9 @@ func TransformNodeStatusExporter(obj *appsv1.DaemonSet, config *gpuv1.ClusterPol
 
 	// update the security context for the node status exporter container.
 	transformValidatorSecurityContext(&obj.Spec.Template.Spec.Containers[0])
+
+	// set hostNetwork for node-status-exporter if specified
+	applyHostNetworkConfig(&obj.Spec.Template.Spec, config.NodeStatusExporter.HostNetwork)
 
 	return nil
 }
