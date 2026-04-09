@@ -104,6 +104,10 @@ spec:
       priorityClassName: {{ default "system-node-critical" .Driver.Spec.PriorityClassName }}
       serviceAccountName: {{ .Driver.Name }}
       hostPID: true
+      {{- if and .Driver.Spec.HostNetwork (deref .Driver.Spec.HostNetwork) }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
       {{- if .Driver.Spec.PodSecurityContext }}
       securityContext:
         {{- .Driver.Spec.PodSecurityContext | yaml | nindent 8 }}
