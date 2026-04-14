@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/NVIDIA/go-nvlib v0.9.1-0.20251202135446-d0f42ba016dd
+	github.com/NVIDIA/go-nvlib v0.10.0
 	github.com/NVIDIA/k8s-kata-manager v0.2.3
 	github.com/NVIDIA/k8s-operator-libs v0.0.0-20260215183545-a0a0256b9c5e
 	github.com/NVIDIA/nvidia-container-toolkit v1.19.0
