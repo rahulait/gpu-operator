@@ -42,11 +42,15 @@ import (
 // FakeConditionUpdater implements conditions.Updater
 // It always returns CustomError if set
 type FakeConditionUpdater struct {
-	CustomError error
+	CustomError    error
+	LastErrorState nvidiav1alpha1.State
 }
 
 // SetConditionsError always returns CustomError if set
 func (f *FakeConditionUpdater) SetConditionsError(ctx context.Context, obj any, condType, msg string) error {
+	if driver, ok := obj.(*nvidiav1alpha1.NVIDIADriver); ok {
+		f.LastErrorState = driver.Status.State
+	}
 	return f.CustomError
 }
 
@@ -192,4 +196,52 @@ func TestReconcile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReconcileConflictSetsNotReadyState(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
+	require.NoError(t, gpuv1.AddToScheme(scheme))
+
+	driver := &nvidiav1alpha1.NVIDIADriver{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-driver",
+			Namespace: "default",
+		},
+		Status: nvidiav1alpha1.NVIDIADriverStatus{
+			State: nvidiav1alpha1.Ready,
+		},
+	}
+
+	cp := &gpuv1.ClusterPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		Spec: gpuv1.ClusterPolicySpec{
+			Driver: gpuv1.DriverSpec{
+				UseNvidiaDriverCRD: ptr.To(true),
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cp, driver).Build()
+	updater := &FakeConditionUpdater{}
+
+	reconciler := &NVIDIADriverReconciler{
+		Client:           client,
+		Scheme:           scheme,
+		conditionUpdater: updater,
+		nodeSelectorValidator: &FakeNodeSelectorValidator{
+			CustomError: errors.New("conflicting selector"),
+		},
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      driver.Name,
+			Namespace: driver.Namespace,
+		},
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, nvidiav1alpha1.NotReady, updater.LastErrorState)
 }

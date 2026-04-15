@@ -145,6 +145,7 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// is deployed per GPU node.
 	if err := r.nodeSelectorValidator.Validate(ctx, instance); err != nil {
 		logger.Error(err, "nodeSelector validation failed")
+		instance.Status.State = nvidiav1alpha1.NotReady
 		if condErr := r.conditionUpdater.SetConditionsError(ctx, instance, conditions.ConflictingNodeSelector, err.Error()); condErr != nil {
 			logger.Error(condErr, "failed to set condition")
 		}
