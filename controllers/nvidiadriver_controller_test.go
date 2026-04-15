@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -244,4 +245,25 @@ func TestReconcileConflictSetsNotReadyState(t *testing.T) {
 	_, err := reconciler.Reconcile(context.Background(), req)
 	require.NoError(t, err)
 	require.Equal(t, nvidiav1alpha1.NotReady, updater.LastErrorState)
+}
+
+func TestEnqueueAllNVIDIADrivers(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
+
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		&nvidiav1alpha1.NVIDIADriver{ObjectMeta: metav1.ObjectMeta{Name: "driver-a", Namespace: "default"}},
+		&nvidiav1alpha1.NVIDIADriver{ObjectMeta: metav1.ObjectMeta{Name: "driver-b", Namespace: "default"}},
+	).Build()
+
+	reconciler := &NVIDIADriverReconciler{Client: client}
+	requests := reconciler.enqueueAllNVIDIADrivers(context.Background())
+
+	require.Len(t, requests, 2)
+	got := []string{
+		requests[0].String(),
+		requests[1].String(),
+	}
+	sort.Strings(got)
+	require.Equal(t, []string{"default/driver-a", "default/driver-b"}, got)
 }
