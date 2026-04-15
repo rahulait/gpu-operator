@@ -230,7 +230,7 @@ spec:
     - name: vfio-manager-image
       image: nvcr.io/nvidia/cloud-native/k8s-driver-manager:v0.10.0@sha256:6677437faff2c45506484dd9f0f04ad3b4880aa65b26d11f76d169e65497fade
     - name: cc-manager-image
-      image: nvcr.io/nvidia/cloud-native/k8s-cc-manager:v0.3.0@sha256:22af62e436736c183e76e324d8d0d4927646803604c972f73007d298f02a5211
+      image: nvcr.io/nvidia/cloud-native/k8s-cc-manager:v0.4.0@sha256:4e3bfe3fe9e0bb2d2dca89af3eb8c1437a98739c86a255d1730a80211312be75
     - name: sandbox-device-plugin-image
       image: nvcr.io/nvidia/kubevirt-gpu-device-plugin:v1.5.0@sha256:90f05ac42aeb7f259d69157a31cca03c97bed803fa28853e6429b85e238b90d6
     - name: kata-sandbox-device-plugin-image
@@ -944,7 +944,7 @@ spec:
                   - name: "VFIO_MANAGER_IMAGE"
                     value: "nvcr.io/nvidia/cloud-native/k8s-driver-manager:v0.10.0@sha256:6677437faff2c45506484dd9f0f04ad3b4880aa65b26d11f76d169e65497fade"
                   - name: "CC_MANAGER_IMAGE"
-                    value: "nvcr.io/nvidia/cloud-native/k8s-cc-manager:v0.3.0@sha256:22af62e436736c183e76e324d8d0d4927646803604c972f73007d298f02a5211"
+                    value: "nvcr.io/nvidia/cloud-native/k8s-cc-manager:v0.4.0@sha256:4e3bfe3fe9e0bb2d2dca89af3eb8c1437a98739c86a255d1730a80211312be75"
                   - name: "SANDBOX_DEVICE_PLUGIN_IMAGE"
                     value: "nvcr.io/nvidia/kubevirt-gpu-device-plugin:v1.5.0@sha256:90f05ac42aeb7f259d69157a31cca03c97bed803fa28853e6429b85e238b90d6"
                   - name: "KATA_SANDBOX_DEVICE_PLUGIN_IMAGE"
