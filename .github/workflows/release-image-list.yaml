@@ -1,0 +1,75 @@
+# Copyright NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release Image List
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  generate-image-list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      artifact_name: ${{ steps.generate.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v6
+        name: Check out code
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+      - name: Generate image list
+        id: generate
+        run: |
+          ARTIFACT_NAME="gpu-operator-images.txt"
+          python3 .github/scripts/generate-image-list.py \
+            --gpu-operator-version "${{ github.event.release.tag_name }}" \
+            --output "${ARTIFACT_NAME}"
+          echo "artifact_name=${ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
+      - name: Upload image list artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.generate.outputs.artifact_name }}
+          path: ${{ steps.generate.outputs.artifact_name }}
+          if-no-files-found: error
+
+  upload-image-list-to-release:
+    needs: [generate-image-list]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        name: Check out code
+      - name: Download image list artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-image-list.outputs.artifact_name }}
+      - name: Attach image list to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_NAME: ${{ needs.generate-image-list.outputs.artifact_name }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "${ARTIFACT_NAME}" --clobber
