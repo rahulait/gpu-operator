@@ -61,7 +61,7 @@ jobs:
             "${MIG_MANAGER}"
       
       - name: Upload values override file
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: values-overrides
           path: values-overrides.yaml
