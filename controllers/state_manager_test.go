@@ -318,6 +318,19 @@ func TestValidateClusterPolicySpec(t *testing.T) {
 			},
 			err: errors.New("the NRI Plugin cannot be enabled when CDI is disabled"),
 		},
+		{
+			description: "invalid CDI and Toolkit config combination",
+			spec: &gpuv1.ClusterPolicySpec{
+				CDI: gpuv1.CDIConfigSpec{
+					Enabled:          ptr.To(true),
+					NRIPluginEnabled: ptr.To(true),
+				},
+				Toolkit: gpuv1.ToolkitSpec{
+					Enabled: ptr.To(false),
+				},
+			},
+			err: errors.New("the NRI Plugin cannot be enabled when the Container Toolkit is disabled"),
+		},
 	}
 
 	for _, tc := range tests {

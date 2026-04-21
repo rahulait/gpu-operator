@@ -1151,5 +1151,10 @@ func validateClusterPolicySpec(spec *gpuv1.ClusterPolicySpec) error {
 	if !spec.CDI.IsEnabled() && spec.CDI.IsNRIPluginEnabled() {
 		return fmt.Errorf("the NRI Plugin cannot be enabled when CDI is disabled")
 	}
+
+	if spec.CDI.IsNRIPluginEnabled() && !spec.Toolkit.IsEnabled() {
+		return fmt.Errorf("the NRI Plugin cannot be enabled when the Container Toolkit is disabled")
+	}
+
 	return nil
 }
