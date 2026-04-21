@@ -4,3 +4,4 @@ vendor/
 aws-kube-ci
 cnt-ci
 key.pem
+kubeconfig
