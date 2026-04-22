@@ -664,18 +664,15 @@ func (n *ClusterPolicyController) getGPUNodeOSInfo() (string, string, error) {
 	}
 	osMajorVersion := strings.Split(osVersion, ".")[0]
 
-	// If the OS is RockyLinux or RHEL 10 & above, we will omit the minor version when constructing the os image tag
+	// If the OS is RockyLinux or RHEL, we will omit the minor version when constructing the os image tag
 	switch osName {
 	case "rocky":
 		osVersion = osMajorVersion
 	case "rhel":
-		osMajorNumber, err := parseOSMajorVersion(osVersion)
-		if err != nil {
+		if _, err := parseOSMajorVersion(osVersion); err != nil {
 			return "", "", err
 		}
-		if osMajorNumber >= 10 {
-			osVersion = osMajorVersion
-		}
+		osVersion = osMajorVersion
 	}
 	osTag := fmt.Sprintf("%s%s", osName, osVersion)
 

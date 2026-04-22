@@ -144,20 +144,15 @@ func getOSTag(osRelease, osVersion string) (string, error) {
 	osMajorVersion := strings.Split(osVersion, ".")[0]
 
 	var osTagSuffix string
-	// If the OS is RockyLinux or RHEL 10 & above, we will omit the minor version when constructing the os image tag
+	// If the OS is RockyLinux or RHEL, we will omit the minor version when constructing the os image tag
 	switch osRelease {
 	case "rocky":
 		osTagSuffix = osMajorVersion
 	case "rhel":
-		osMajorNumber, err := parseOSMajorVersion(osVersion)
-		if err != nil {
+		if _, err := parseOSMajorVersion(osVersion); err != nil {
 			return "", fmt.Errorf("failed to parse os version: %w", err)
 		}
-		if osMajorNumber >= 10 {
-			osTagSuffix = osMajorVersion
-		} else {
-			osTagSuffix = osVersion
-		}
+		osTagSuffix = osMajorVersion
 	default:
 		osTagSuffix = osVersion
 	}

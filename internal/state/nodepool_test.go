@@ -35,7 +35,14 @@ func TestGetOSTag(t *testing.T) {
 			description: "valid os release & version",
 			osRelease:   "rhel",
 			osVersion:   "9.4",
-			expected:    "rhel9.4",
+			expected:    "rhel9",
+			expectError: false,
+		},
+		{
+			description: "valid os release & version - rhel8",
+			osRelease:   "rhel",
+			osVersion:   "8.10",
+			expected:    "rhel8",
 			expectError: false,
 		},
 		{
