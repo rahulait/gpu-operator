@@ -181,6 +181,8 @@ const (
 	HostRootEnvName = "HOST_ROOT"
 	// DefaultDriverInstallDir represents the default path of a driver container installation
 	DefaultDriverInstallDir = "/run/nvidia/driver"
+	// DefaultKubeletRootDir represents the default path of a kubelet root directory
+	DefaultKubeletRootDir = "/var/lib/kubelet"
 	// DriverInstallDirEnvName is the name of the envvar used by the driver-validator to represent the driver install dir
 	DriverInstallDirEnvName = "DRIVER_INSTALL_DIR"
 	// DriverInstallDirCtrPathEnvName is the name of the envvar used by the driver-validator to represent the path
@@ -1848,6 +1850,18 @@ func TransformDCGMExporter(obj *appsv1.DaemonSet, config *gpuv1.ClusterPolicySpe
 		obj.Spec.Template.Spec.Volumes = append(obj.Spec.Template.Spec.Volumes, metricsConfigVol)
 
 		setContainerEnv(&(obj.Spec.Template.Spec.Containers[0]), "DCGM_EXPORTER_COLLECTORS", MetricsConfigMountPath)
+	}
+
+	const podResourcesVolume = "pod-gpu-resources"
+	kubeletRootDir := config.HostPaths.KubeletRootDir
+	if len(kubeletRootDir) > 0 && kubeletRootDir != DefaultKubeletRootDir {
+		for i := range obj.Spec.Template.Spec.Volumes {
+			volume := &obj.Spec.Template.Spec.Volumes[i]
+			if volume.Name == podResourcesVolume {
+				volume.HostPath.Path = filepath.Join(kubeletRootDir, "pod-resources")
+				break
+			}
+		}
 	}
 
 	for _, env := range config.DCGMExporter.Env {

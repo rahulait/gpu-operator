@@ -174,6 +174,11 @@ type HostPathsSpec struct {
 	// DriverInstallDir represents the root at which driver files including libraries,
 	// config files, and executables can be found.
 	DriverInstallDir string `json:"driverInstallDir,omitempty"`
+
+	// KubeletRootDir represents the location of the kubelet root directory.
+	// If empty, it will default to "/var/lib/kubelet".
+	// +kubebuilder:default="/var/lib/kubelet"
+	KubeletRootDir string `json:"kubeletRootDir,omitempty"`
 }
 
 // EnvVar represents an environment variable present in a Container.
