@@ -1369,6 +1369,60 @@ func TestServiceMonitor(t *testing.T) {
 			expectedServiceMonitor: nil,
 		},
 		{
+			description:       "operator-metrics SM nil config, CRD present -> Ready with defaults",
+			stateName:         "state-operator-metrics",
+			k8sObjects:        []client.Object{serviceMonitorCRD},
+			clusterPolicySpec: gpuv1.ClusterPolicySpec{},
+			expectedState:     gpuv1.Ready,
+			expectedServiceMonitor: &promv1.ServiceMonitor{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service-monitor",
+					Namespace: "test-namespace",
+					Labels:    nil,
+				},
+				Spec: promv1.ServiceMonitorSpec{
+					NamespaceSelector: promv1.NamespaceSelector{MatchNames: []string{"test-namespace"}},
+					Endpoints:         []promv1.Endpoint{{}},
+				},
+			},
+		},
+		{
+			description: "operator-metrics SM enabled, CRD present -> Ready and applies edits",
+			stateName:   "state-operator-metrics",
+			k8sObjects:  []client.Object{serviceMonitorCRD},
+			clusterPolicySpec: gpuv1.ClusterPolicySpec{
+				Operator: gpuv1.OperatorSpec{
+					Metrics: gpuv1.OperatorMetricsSpec{
+						ServiceMonitor: &gpuv1.ServiceMonitorConfig{
+							Enabled:          ptr.To(true),
+							Interval:         promv1.Duration("30s"),
+							HonorLabels:      ptr.To(true),
+							AdditionalLabels: map[string]string{"custom": "label"},
+							Relabelings:      []*promv1.RelabelConfig{{Action: "drop"}},
+						},
+					},
+				},
+			},
+			expectedState: gpuv1.Ready,
+			expectedServiceMonitor: &promv1.ServiceMonitor{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service-monitor",
+					Namespace: "test-namespace",
+					Labels:    map[string]string{"custom": "label"},
+				},
+				Spec: promv1.ServiceMonitorSpec{
+					NamespaceSelector: promv1.NamespaceSelector{MatchNames: []string{"test-namespace"}},
+					Endpoints: []promv1.Endpoint{{
+						Interval:    promv1.Duration("30s"),
+						HonorLabels: true,
+						RelabelConfigs: []promv1.RelabelConfig{{
+							Action: "drop",
+						}},
+					}},
+				},
+			},
+		},
+		{
 			description: "dcgm-exporter SM enabled, CRD present -> Ready and applies edits",
 			stateName:   "state-dcgm-exporter",
 			k8sObjects:  []client.Object{serviceMonitorCRD},
