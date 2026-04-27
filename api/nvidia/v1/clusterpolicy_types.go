@@ -145,10 +145,10 @@ type ServiceMonitorConfig struct {
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.x-descriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch"
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// Interval which metrics should be scraped from. If not specified Prometheus’ global scrape interval is used.
+	// Interval at which metrics should be scraped. If not specified, Prometheus’ global scrape interval is used.
 	// Supported units: y, w, d, h, m, s, ms
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors=true
-	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="Interval which metrics should be scraped from"
+	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="Interval at which metrics should be scraped"
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.x-descriptors="urn:alm:descriptor:com.tectonic.ui:text"
 	Interval promv1.Duration `json:"interval,omitempty"`
 
@@ -193,16 +193,21 @@ type OperatorSpec struct {
 	// queryable and should be preserved when modifying objects.
 	Annotations map[string]string `json:"annotations,omitempty"`
 
-	// Optional: ServiceMonitor configuration for NVIDIA GPU Operator
-	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors=true
-	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="ServiceMonitor configuration for NVIDIA GPU Operator"
-	ServiceMonitor *ServiceMonitorConfig `json:"serviceMonitor,omitempty"`
+	// Metrics configuration for NVIDIA GPU Operator
+	Metrics OperatorMetricsSpec `json:"metrics,omitempty"`
 
 	// UseOpenShiftDriverToolkit indicates if DriverToolkit image should be used on OpenShift to build and install driver modules
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors=true
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="On OpenShift, enable DriverToolkit image to build and install driver modules"
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.x-descriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch"
 	UseOpenShiftDriverToolkit *bool `json:"use_ocp_driver_toolkit,omitempty"`
+}
+
+type OperatorMetricsSpec struct {
+	// Optional: ServiceMonitor configuration for NVIDIA GPU Operator
+	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors=true
+	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="ServiceMonitor configuration for NVIDIA GPU Operator"
+	ServiceMonitor *ServiceMonitorConfig `json:"serviceMonitor,omitempty"`
 }
 
 // HostPathsSpec defines various paths on the host needed by GPU Operator components

@@ -4910,20 +4910,32 @@ func crdExists(n ClusterPolicyController, name string) (bool, error) {
 	return true, nil
 }
 
-func serviceMonitorCustomEdits(desiredState *gpuv1.ServiceMonitorConfig, currentState *promv1.ServiceMonitor) {
+func applyServiceMonitorCustomEdits(desiredState *gpuv1.ServiceMonitorConfig, currentState *promv1.ServiceMonitor) {
+	if currentState == nil || desiredState == nil {
+		return
+	}
+
 	// Apply custom edits for ServiceMonitor
+	if desiredState.AdditionalLabels != nil {
+		if currentState.Labels == nil {
+			currentState.Labels = map[string]string{}
+		}
+		for key, value := range desiredState.AdditionalLabels {
+			currentState.Labels[key] = value
+		}
+	}
+
+	// The following edits are endpoint-specific and require at least one endpoint
+	if len(currentState.Spec.Endpoints) == 0 {
+		return
+	}
+
 	if desiredState.Interval != "" {
 		currentState.Spec.Endpoints[0].Interval = desiredState.Interval
 	}
 
 	if desiredState.HonorLabels != nil {
 		currentState.Spec.Endpoints[0].HonorLabels = *desiredState.HonorLabels
-	}
-
-	if desiredState.AdditionalLabels != nil {
-		for key, value := range desiredState.AdditionalLabels {
-			currentState.ObjectMeta.Labels[key] = value
-		}
 	}
 
 	if desiredState.Relabelings != nil {
@@ -4986,26 +4998,29 @@ func ServiceMonitor(n ClusterPolicyController) (gpuv1.State, error) {
 		}
 
 		// Apply custom edits for DCGM Exporter
-		serviceMonitorCustomEdits(serviceMonitor, obj)
+		applyServiceMonitorCustomEdits(serviceMonitor, obj)
 	}
 
 	if n.stateNames[state] == "state-operator-metrics" {
-		serviceMonitor := n.singleton.Spec.Operator.ServiceMonitor
+
+		serviceMonitor := n.singleton.Spec.Operator.Metrics.ServiceMonitor
+		if serviceMonitor != nil && serviceMonitor.Enabled != nil && !serviceMonitor.IsEnabled() {
+			logger.Info("Disabling ServiceMonitor for operator-metrics is not supported; continuing with default enabled behavior")
+		}
+
 		// if ServiceMonitor CRD is missing, assume prometheus is not setup and ignore CR creation
 		if !serviceMonitorCRDExists {
 			logger.V(1).Info("ServiceMonitor CRD is missing, ignoring creation of CR for operator-metrics")
 			return gpuv1.Ready, nil
 		}
 		obj.Spec.NamespaceSelector.MatchNames = []string{obj.Namespace}
-		if serviceMonitor != nil {
-			serviceMonitorCustomEdits(serviceMonitor, obj)
-		}
+		applyServiceMonitorCustomEdits(serviceMonitor, obj)
 	}
 
 	if n.stateNames[state] == "state-node-status-exporter" {
 		// if ServiceMonitor CRD is missing, assume prometheus is not setup and ignore CR creation
 		if !serviceMonitorCRDExists {
-			logger.V(1).Info("ServiceMonitor CRD is missing, ignoring creation of CR for operator-metrics")
+			logger.V(1).Info("ServiceMonitor CRD is missing, ignoring creation of CR", "state", n.stateNames[state])
 			return gpuv1.Ready, nil
 		}
 		obj.Spec.NamespaceSelector.MatchNames = []string{obj.Namespace}
