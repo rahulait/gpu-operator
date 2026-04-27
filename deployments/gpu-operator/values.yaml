@@ -314,6 +314,7 @@ dcgmExporter:
   serviceMonitor:
     enabled: false
     interval: 15s
+    scrapeTimeout: 10s
     honorLabels: false
     additionalLabels: {}
     relabelings: []

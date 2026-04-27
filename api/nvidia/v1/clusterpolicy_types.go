@@ -152,6 +152,14 @@ type ServiceMonitorConfig struct {
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.x-descriptors="urn:alm:descriptor:com.tectonic.ui:text"
 	Interval promv1.Duration `json:"interval,omitempty"`
 
+	// ScrapeTimeout to use when scraping metrics. Must not be greater than Interval.
+	// If not specified, Prometheus' global scrape timeout is used.
+	// Supported units: y, w, d, h, m, s, ms
+	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors=true
+	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="Scrape timeout"
+	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.x-descriptors="urn:alm:descriptor:com.tectonic.ui:text"
+	ScrapeTimeout promv1.Duration `json:"scrapeTimeout,omitempty"`
+
 	// HonorLabels chooses the metric’s labels on collisions with target labels.
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors=true
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="Choose the metric's label on collisions with target labels"

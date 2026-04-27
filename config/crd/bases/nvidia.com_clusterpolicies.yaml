@@ -783,6 +783,13 @@ spec:
                               type: string
                           type: object
                         type: array
+                      scrapeTimeout:
+                        description: |-
+                          ScrapeTimeout to use when scraping metrics. Must not be greater than Interval.
+                          If not specified, Prometheus' global scrape timeout is used.
+                          Supported units: y, w, d, h, m, s, ms
+                        pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
+                        type: string
                     type: object
                   version:
                     description: NVIDIA DCGM Exporter image tag
@@ -2083,6 +2090,13 @@ spec:
                                   type: string
                               type: object
                             type: array
+                          scrapeTimeout:
+                            description: |-
+                              ScrapeTimeout to use when scraping metrics. Must not be greater than Interval.
+                              If not specified, Prometheus' global scrape timeout is used.
+                              Supported units: y, w, d, h, m, s, ms
+                            pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
+                            type: string
                         type: object
                     type: object
                   runtimeClass:

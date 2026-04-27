@@ -4934,6 +4934,10 @@ func applyServiceMonitorCustomEdits(desiredState *gpuv1.ServiceMonitorConfig, cu
 		currentState.Spec.Endpoints[0].Interval = desiredState.Interval
 	}
 
+	if desiredState.ScrapeTimeout != "" {
+		currentState.Spec.Endpoints[0].ScrapeTimeout = desiredState.ScrapeTimeout
+	}
+
 	if desiredState.HonorLabels != nil {
 		currentState.Spec.Endpoints[0].HonorLabels = *desiredState.HonorLabels
 	}
