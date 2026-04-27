@@ -245,20 +245,20 @@ validate-helm-values: cmds
 		sed '/^--/d' | \
 		./gpuop-cfg validate clusterpolicy --input="-"
 
-# Generate a list of all container images required to run the GPU Operator.
+# Generate a list of all container images that could be deployed by the GPU Operator.
 # Useful for pre-pulling images in air-gapped environments.
 # Usage:
 #   make generate-image-list                              # prints to stdout (queries registry for OS variants)
 #   make generate-image-list IMAGE_LIST=images.txt        # writes to a file
 #   make generate-image-list SKIP_REGISTRY=1              # skip registry lookups, use values.yaml tags as-is
-#   make generate-image-list IMAGE_TAG=v1.0.0             # override gpu-operator image version
+#   make generate-image-list IMAGE_TAG=v1.0.0             # override gpu-operator version (defaults to VERSION)
 IMAGE_LIST ?=
 SKIP_REGISTRY ?=
 generate-image-list:
 	python3 .github/scripts/generate-image-list.py \
 		$(if $(IMAGE_LIST),--output "$(IMAGE_LIST)") \
 		$(if $(SKIP_REGISTRY),--skip-registry) \
-		$(if $(IMAGE_TAG),--gpu-operator-version "$(IMAGE_TAG)")
+		--gpu-operator-version "$(IMAGE_TAG)"
 
 validate-generated-assets: manifests generate generate-clientset sync-crds
 	@echo "- Verifying that the generated code and manifests are in-sync..."

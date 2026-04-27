@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generate a complete list of container images required to run the GPU Operator.
+"""Generate a complete list of container images that could be pulled and deployed
+by the GPU Operator.
 
 Parses the Helm chart's values.yaml (and the bundled NFD subchart) to produce a
 plain-text file with one fully-qualified image reference per line.  The list is
@@ -65,8 +66,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 def _load_yaml(path: str) -> dict:
-    with open(path) as fh:
-        return yaml.safe_load(fh) or {}
+    with open(path) as file_handle:
+        return yaml.safe_load(file_handle) or {}
 
 
 def _build_ref(repository: str, image: str, version: str) -> str | None:
@@ -91,13 +92,13 @@ def _registry_token(registry_host: str, namespace: str) -> str:
     A GET to that realm with the desired scope returns {"token": "…"}.
     """
     scope = f"repository:{namespace}:pull"
-    url = f"https://{registry_host}/proxy_auth?scope={urllib.parse.quote(scope)}"
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read())
+    token_url = f"https://{registry_host}/proxy_auth?scope={urllib.parse.quote(scope)}"
+    request = urllib.request.Request(token_url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        data = json.loads(response.read())
     token = data.get("token") or data.get("access_token")
     if not token:
-        raise RuntimeError(f"No token returned from {url}: {data}")
+        raise RuntimeError(f"No token returned from {token_url}: {data}")
     return token
 
 
@@ -108,29 +109,29 @@ def _fetch_all_tags(registry_host: str, namespace: str) -> list[str]:
     """
     token = _registry_token(registry_host, namespace)
     tags: list[str] = []
-    url = f"https://{registry_host}/v2/{namespace}/tags/list?n=1000"
+    tags_url = f"https://{registry_host}/v2/{namespace}/tags/list?n=1000"
 
-    while url:
-        req = urllib.request.Request(
-            url,
+    while tags_url:
+        request = urllib.request.Request(
+            tags_url,
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/json",
             },
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = json.loads(resp.read())
-            tags.extend(body.get("tags") or [])
+        with urllib.request.urlopen(request, timeout=15) as response:
+            response_body = json.loads(response.read())
+            tags.extend(response_body.get("tags") or [])
             # Follow Link: <url>; rel="next" pagination
-            link_header = resp.headers.get("Link", "")
+            link_header = response.headers.get("Link", "")
             next_url = _parse_link_next(link_header)
             if next_url:
                 # Link URLs from nvcr.io are relative paths; make them absolute
                 if next_url.startswith("/"):
                     next_url = f"https://{registry_host}{next_url}"
-                url = next_url
+                tags_url = next_url
             else:
-                url = None
+                tags_url = None
 
     return tags
 
@@ -139,9 +140,9 @@ def _parse_link_next(link_header: str) -> str | None:
     """Extract the URL from a `Link: <url>; rel="next"` header, if present."""
     for part in link_header.split(","):
         part = part.strip()
-        m = re.match(r'<([^>]+)>.*rel=["\']?next["\']?', part)
-        if m:
-            return m.group(1)
+        match = re.match(r'<([^>]+)>.*rel=["\']?next["\']?', part)
+        if match:
+            return match.group(1)
     return None
 
 
@@ -173,11 +174,11 @@ def _os_variant_tags(
 
     prefix = f"{version}-"
     # Exclude supply-chain artefact pseudo-tags
-    _exclude = re.compile(r"\.(sbom|sig|vex)$|^sha256-")
+    excluded_tag_pattern = re.compile(r"\.(sbom|sig|vex)$|^sha256-")
     matched = [
         f"{registry_host}/{namespace}:{t}"
         for t in all_tags
-        if t.startswith(prefix) and not _exclude.search(t)
+        if t.startswith(prefix) and not excluded_tag_pattern.search(t)
     ]
 
     if not matched:
@@ -207,41 +208,41 @@ def _extract_operator_images(
     """
     images: set[str] = set()
 
-    def add(repo: str, img: str, ver: str | None) -> None:
+    def add_image_ref(repository: str, image: str, version: str | None) -> None:
         """Add a single-tag image, substituting app_version when version is absent."""
-        if ver == "":
+        if version == "":
             return  # empty string = user-supplied image not set; skip
-        resolved_ver = ver if ver else app_version
-        ref = _build_ref(repo, img, resolved_ver)
-        if ref:
-            images.add(ref)
+        resolved_version = version if version else app_version
+        image_reference = _build_ref(repository, image, resolved_version)
+        if image_reference:
+            images.add(image_reference)
 
-    def add_os_variants(repo: str, img: str, ver: str) -> None:
+    def add_os_variants(repository: str, image: str, version: str) -> None:
         """Add all OS-variant tags for an image by querying the registry.
 
         The convention for OS-specific images is:
             <repository>/<image>:<version>-<os-tag>
         e.g., nvcr.io/nvidia/driver:595.58.03-ubuntu22.04
         """
-        if not repo or not img or not ver:
+        if not repository or not image or not version:
             return
-        fallback = _build_ref(repo, img, ver)  # tag as written in values.yaml (no OS suffix)
+        fallback = _build_ref(repository, image, version)  # tag as written in values.yaml (no OS suffix)
         # Extract the registry host from the repository URL
-        parts = repo.split("/", 1)
-        registry_host = parts[0]
+        repository_parts = repository.split("/", 1)
+        registry_host = repository_parts[0]
         # namespace = everything after the host + "/" + image name
-        namespace = f"{parts[1]}/{img}" if len(parts) > 1 else img
-        for ref in _os_variant_tags(registry_host, namespace, ver, fallback, skip_registry):
-            images.add(ref)
+        namespace = f"{repository_parts[1]}/{image}" if len(repository_parts) > 1 else image
+        for image_reference in _os_variant_tags(registry_host, namespace, version, fallback, skip_registry):
+            images.add(image_reference)
 
     # ------------------------------------------------------------------
     # Components whose version defaults to Chart.appVersion when unset
     # ------------------------------------------------------------------
     for key in ("operator", "validator", "nodeStatusExporter"):
-        comp = values.get(key, {})
+        component = values.get(key, {})
         # Use explicit version from component if specified, otherwise use override if provided
-        version = comp.get("version") or operator_version
-        add(comp.get("repository", ""), comp.get("image", ""), version)
+        version = component.get("version") or operator_version
+        add_image_ref(component.get("repository", ""), component.get("image", ""), version)
 
     # ------------------------------------------------------------------
     # Components with explicit, pinned versions
@@ -255,77 +256,129 @@ def _extract_operator_images(
         (driver.get("version") or "").strip(),
     )
 
-    # k8s-driver-manager sidecar
-    dm = driver.get("manager", {})
-    add(dm.get("repository", ""), dm.get("image", ""), dm.get("version", ""))
+    # k8s-driver-manager
+    driver_manager = driver.get("manager", {})
+    add_image_ref(
+        driver_manager.get("repository", ""),
+        driver_manager.get("image", ""),
+        driver_manager.get("version", ""),
+    )
 
     # Container Toolkit
-    tk = values.get("toolkit", {})
-    add(tk.get("repository", ""), tk.get("image", ""), tk.get("version", ""))
+    toolkit = values.get("toolkit", {})
+    add_image_ref(
+        toolkit.get("repository", ""),
+        toolkit.get("image", ""),
+        toolkit.get("version", ""),
+    )
 
     # Device Plugin
-    dp = values.get("devicePlugin", {})
-    add(dp.get("repository", ""), dp.get("image", ""), dp.get("version", ""))
+    device_plugin = values.get("devicePlugin", {})
+    add_image_ref(
+        device_plugin.get("repository", ""),
+        device_plugin.get("image", ""),
+        device_plugin.get("version", ""),
+    )
 
     # Standalone DCGM hostengine (optional, disabled by default)
     dcgm = values.get("dcgm", {})
-    add(dcgm.get("repository", ""), dcgm.get("image", ""), dcgm.get("version", ""))
+    add_image_ref(dcgm.get("repository", ""), dcgm.get("image", ""), dcgm.get("version", ""))
 
     # DCGM Exporter
-    de = values.get("dcgmExporter", {})
-    add(de.get("repository", ""), de.get("image", ""), de.get("version", ""))
+    dcgm_exporter = values.get("dcgmExporter", {})
+    add_image_ref(
+        dcgm_exporter.get("repository", ""),
+        dcgm_exporter.get("image", ""),
+        dcgm_exporter.get("version", ""),
+    )
 
     # GPU Feature Discovery (shares the device-plugin image)
-    gfd = values.get("gfd", {})
-    add(gfd.get("repository", ""), gfd.get("image", ""), gfd.get("version", ""))
+    gpu_feature_discovery = values.get("gfd", {})
+    add_image_ref(
+        gpu_feature_discovery.get("repository", ""),
+        gpu_feature_discovery.get("image", ""),
+        gpu_feature_discovery.get("version", ""),
+    )
 
     # MIG Manager
-    mm = values.get("migManager", {})
-    add(mm.get("repository", ""), mm.get("image", ""), mm.get("version", ""))
+    mig_manager = values.get("migManager", {})
+    add_image_ref(
+        mig_manager.get("repository", ""),
+        mig_manager.get("image", ""),
+        mig_manager.get("version", ""),
+    )
 
     # GPUDirect Storage – OS-specific image (e.g. 2.27.3-ubuntu22.04)
-    gds = values.get("gds", {})
+    gds_component = values.get("gds", {})
     add_os_variants(
-        gds.get("repository", ""),
-        gds.get("image", ""),
-        (gds.get("version") or "").strip(),
+        gds_component.get("repository", ""),
+        gds_component.get("image", ""),
+        (gds_component.get("version") or "").strip(),
     )
 
     # GDRCopy – OS-specific image (e.g. v2.5.2-ubuntu22.04)
-    gdr = values.get("gdrcopy", {})
+    gdrcopy_component = values.get("gdrcopy", {})
     add_os_variants(
-        gdr.get("repository", ""),
-        gdr.get("image", ""),
-        (gdr.get("version") or "").strip(),
+        gdrcopy_component.get("repository", ""),
+        gdrcopy_component.get("image", ""),
+        (gdrcopy_component.get("version") or "").strip(),
     )
 
     # vGPU Manager – main image is user-supplied (repository/version empty); skip.
     # The driverManager sidecar is pinned.
-    vgpu = values.get("vgpuManager", {})
-    vgpu_dm = vgpu.get("driverManager", {})
-    add(vgpu_dm.get("repository", ""), vgpu_dm.get("image", ""), vgpu_dm.get("version", ""))
+    vgpu_manager = values.get("vgpuManager", {})
+    vgpu_driver_manager = vgpu_manager.get("driverManager", {})
+    add_image_ref(
+        vgpu_driver_manager.get("repository", ""),
+        vgpu_driver_manager.get("image", ""),
+        vgpu_driver_manager.get("version", ""),
+    )
 
     # vGPU Device Manager
-    vdm = values.get("vgpuDeviceManager", {})
-    add(vdm.get("repository", ""), vdm.get("image", ""), vdm.get("version", ""))
+    vgpu_device_manager = values.get("vgpuDeviceManager", {})
+    add_image_ref(
+        vgpu_device_manager.get("repository", ""),
+        vgpu_device_manager.get("image", ""),
+        vgpu_device_manager.get("version", ""),
+    )
 
     # VFIO Manager (and its driverManager sidecar)
-    vfio = values.get("vfioManager", {})
-    add(vfio.get("repository", ""), vfio.get("image", ""), vfio.get("version", ""))
-    vfio_dm = vfio.get("driverManager", {})
-    add(vfio_dm.get("repository", ""), vfio_dm.get("image", ""), vfio_dm.get("version", ""))
+    vfio_manager = values.get("vfioManager", {})
+    add_image_ref(
+        vfio_manager.get("repository", ""),
+        vfio_manager.get("image", ""),
+        vfio_manager.get("version", ""),
+    )
+    vfio_driver_manager = vfio_manager.get("driverManager", {})
+    add_image_ref(
+        vfio_driver_manager.get("repository", ""),
+        vfio_driver_manager.get("image", ""),
+        vfio_driver_manager.get("version", ""),
+    )
 
     # Sandbox Device Plugin (KubeVirt GPU passthrough)
-    sdp = values.get("sandboxDevicePlugin", {})
-    add(sdp.get("repository", ""), sdp.get("image", ""), sdp.get("version", ""))
+    sandbox_device_plugin = values.get("sandboxDevicePlugin", {})
+    add_image_ref(
+        sandbox_device_plugin.get("repository", ""),
+        sandbox_device_plugin.get("image", ""),
+        sandbox_device_plugin.get("version", ""),
+    )
 
     # Kata Sandbox Device Plugin
-    ksdp = values.get("kataSandboxDevicePlugin", {})
-    add(ksdp.get("repository", ""), ksdp.get("image", ""), ksdp.get("version", ""))
+    kata_sandbox_device_plugin = values.get("kataSandboxDevicePlugin", {})
+    add_image_ref(
+        kata_sandbox_device_plugin.get("repository", ""),
+        kata_sandbox_device_plugin.get("image", ""),
+        kata_sandbox_device_plugin.get("version", ""),
+    )
 
     # Confidential Computing Manager
-    cc = values.get("ccManager", {})
-    add(cc.get("repository", ""), cc.get("image", ""), cc.get("version", ""))
+    cc_manager = values.get("ccManager", {})
+    add_image_ref(
+        cc_manager.get("repository", ""),
+        cc_manager.get("image", ""),
+        cc_manager.get("version", ""),
+    )
 
     # kataManager has no image fields in values.yaml (operator-managed); skip.
 
@@ -338,11 +391,11 @@ def _extract_operator_images(
 
 def _extract_nfd_images(nfd_values: dict, nfd_chart: dict) -> list[str]:
     """Return the NFD image reference from the bundled NFD subchart."""
-    img_cfg = nfd_values.get("image", {})
-    repository = (img_cfg.get("repository") or "").strip()
+    image_config = nfd_values.get("image", {})
+    repository = (image_config.get("repository") or "").strip()
     # NFD uses a single image for all its components (master, worker, gc).
     # The tag defaults to Chart.AppVersion when not explicitly set.
-    tag = (img_cfg.get("tag") or "").strip()
+    tag = (image_config.get("tag") or "").strip()
     if not tag:
         tag = (nfd_chart.get("appVersion") or "").strip()
     # NFD's repository already contains the image name (no separate 'image' key)
@@ -453,8 +506,8 @@ def main() -> None:
     output_text = "\n".join(all_images) + "\n"
 
     if args.output:
-        with open(args.output, "w") as fh:
-            fh.write(output_text)
+        with open(args.output, "w") as file_handle:
+            file_handle.write(output_text)
     else:
         sys.stdout.write(output_text)
 
