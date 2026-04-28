@@ -1432,6 +1432,7 @@ func TestServiceMonitor(t *testing.T) {
 					ServiceMonitor: &gpuv1.DCGMExporterServiceMonitorConfig{
 						Enabled:          ptr.To(true),
 						Interval:         promv1.Duration("15s"),
+						ScrapeTimeout:    promv1.Duration("10s"),
 						HonorLabels:      ptr.To(true),
 						AdditionalLabels: map[string]string{"a": "b"},
 						Relabelings:      []*promv1.RelabelConfig{{Action: "keep"}},
@@ -1448,8 +1449,9 @@ func TestServiceMonitor(t *testing.T) {
 				Spec: promv1.ServiceMonitorSpec{
 					NamespaceSelector: promv1.NamespaceSelector{MatchNames: []string{"test-namespace"}},
 					Endpoints: []promv1.Endpoint{{
-						Interval:    promv1.Duration("15s"),
-						HonorLabels: true,
+						Interval:      promv1.Duration("15s"),
+						ScrapeTimeout: promv1.Duration("10s"),
+						HonorLabels:   true,
 						RelabelConfigs: []promv1.RelabelConfig{{
 							Action: "keep",
 						}},
