@@ -76,7 +76,10 @@
       "separateMajorMinor": false
     },
     {
-      "matchPaths": ["deployments/gpu-operator/values.yaml"],
+      "matchPaths": [
+        "deployments/gpu-operator/values.yaml",
+        "bundle/manifests/gpu-operator-certified.clusterserviceversion.yaml"
+      ],
       "matchPackageNames": [
         "nvcr.io/nvidia/k8s/dcgm-exporter"
       ],
