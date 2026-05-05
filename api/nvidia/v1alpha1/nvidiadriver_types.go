@@ -524,10 +524,6 @@ type NVIDIADriverList struct {
 	Items           []NVIDIADriver `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&NVIDIADriver{}, &NVIDIADriverList{})
-}
-
 // UsePrecompiledDrivers returns true if usePrecompiled option is enabled in spec
 func (d *NVIDIADriverSpec) UsePrecompiledDrivers() bool {
 	if d.UsePrecompiled == nil {
