@@ -1,0 +1,245 @@
+# Copyright NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release RC Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "RC release tag, for example v26.3.2-rc.1"
+        required: true
+        type: string
+      source_ref:
+        description: "Branch, tag, or SHA to package. Defaults to the workflow ref."
+        required: false
+        type: string
+      helm_values_override:
+        description: "Repo-local values override file to merge into deployments/gpu-operator/values.yaml"
+        required: true
+        type: string
+      olm_bundle_path:
+        description: "Repo-local OLM bundle directory to archive"
+        required: false
+        default: "bundle"
+        type: string
+      upload_to_release:
+        description: "Create/update the GitHub prerelease and upload assets"
+        required: false
+        default: true
+        type: boolean
+
+permissions: {}
+
+jobs:
+  package-rc-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      artifact_name: ${{ steps.package.outputs.artifact_name }}
+      release_tag: ${{ steps.validate.outputs.release_tag }}
+      source_ref: ${{ steps.validate.outputs.source_ref }}
+      tag_exists: ${{ steps.validate.outputs.tag_exists }}
+    steps:
+      - uses: actions/checkout@v6
+        name: Check out code
+        with:
+          fetch-depth: 0
+
+      - name: Fetch branches and tags
+        run: git fetch --force --tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Preserve workflow scripts
+        run: cp .github/scripts/merge-yaml.py "${RUNNER_TEMP}/merge-yaml.py"
+
+      - name: Validate inputs
+        id: validate
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          HELM_VALUES_OVERRIDE: ${{ inputs.helm_values_override }}
+          OLM_BUNDLE_PATH: ${{ inputs.olm_bundle_path }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${OLM_BUNDLE_PATH}" ]]; then
+            OLM_BUNDLE_PATH="bundle"
+          fi
+
+          if [[ ! "${RELEASE_TAG}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "::error::release_tag must look like v26.3.2-rc.1"
+            exit 1
+          fi
+
+          SOURCE_REF="${INPUT_SOURCE_REF}"
+          if [[ -z "${SOURCE_REF}" ]]; then
+            if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
+              SOURCE_REF="${RELEASE_TAG}"
+            else
+              SOURCE_REF="${GITHUB_REF_NAME}"
+            fi
+          fi
+
+          RESOLVED_REF="${SOURCE_REF}"
+          if ! git rev-parse --verify --quiet "${RESOLVED_REF}^{commit}" >/dev/null; then
+            if git rev-parse --verify --quiet "refs/remotes/origin/${SOURCE_REF}^{commit}" >/dev/null; then
+              RESOLVED_REF="refs/remotes/origin/${SOURCE_REF}"
+            fi
+          fi
+
+          if ! git rev-parse --verify --quiet "${RESOLVED_REF}^{commit}" >/dev/null; then
+            echo "::error::source_ref does not resolve to a commit: ${SOURCE_REF}"
+            exit 1
+          fi
+
+          TAG_EXISTS="false"
+          if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            TAG_EXISTS="true"
+          fi
+
+          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "source_ref=${SOURCE_REF}" >> "${GITHUB_OUTPUT}"
+          echo "resolved_ref=${RESOLVED_REF}" >> "${GITHUB_OUTPUT}"
+          echo "tag_exists=${TAG_EXISTS}" >> "${GITHUB_OUTPUT}"
+          echo "::notice::Packaging source ref: ${SOURCE_REF}"
+          echo "::notice::Release tag: ${RELEASE_TAG}"
+
+      - name: Check out source ref
+        run: git checkout --detach "${{ steps.validate.outputs.resolved_ref }}"
+
+      - name: Validate package inputs
+        id: package-inputs
+        env:
+          HELM_VALUES_OVERRIDE: ${{ inputs.helm_values_override }}
+          OLM_BUNDLE_PATH: ${{ inputs.olm_bundle_path }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${OLM_BUNDLE_PATH}" ]]; then
+            OLM_BUNDLE_PATH="bundle"
+          fi
+
+          if [[ -n "${HELM_VALUES_OVERRIDE}" && ! -f "${HELM_VALUES_OVERRIDE}" ]]; then
+            echo "::error::Helm values override file does not exist: ${HELM_VALUES_OVERRIDE}"
+            exit 1
+          fi
+
+          if [[ ! -d "${OLM_BUNDLE_PATH}" ]]; then
+            echo "::error::OLM bundle path does not exist or is not a directory: ${OLM_BUNDLE_PATH}"
+            exit 1
+          fi
+
+          echo "olm_bundle_path=${OLM_BUNDLE_PATH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      - name: Apply Helm values override
+        env:
+          HELM_VALUES_OVERRIDE: ${{ inputs.helm_values_override }}
+        run: |
+          python3 "${RUNNER_TEMP}/merge-yaml.py" \
+            --base deployments/gpu-operator/values.yaml \
+            --override "${HELM_VALUES_OVERRIDE}" \
+            --output deployments/gpu-operator/values.yaml
+
+      - name: Lint Helm chart
+        run: helm lint deployments/gpu-operator
+
+      - name: Package RC assets
+        id: package
+        env:
+          RELEASE_TAG: ${{ steps.validate.outputs.release_tag }}
+          OLM_BUNDLE_PATH: ${{ steps.package-inputs.outputs.olm_bundle_path }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_NAME="gpu-operator-rc-assets-${RELEASE_TAG}"
+          DIST_DIR="dist"
+          mkdir -p "${DIST_DIR}"
+
+          helm package \
+            --version "${RELEASE_TAG}" \
+            --app-version "${RELEASE_TAG}" \
+            --destination "${DIST_DIR}" \
+            deployments/gpu-operator
+
+          BUNDLE_ASSET="${DIST_DIR}/gpu-operator-bundle-${RELEASE_TAG}.zip"
+          zip -r "${BUNDLE_ASSET}" "${OLM_BUNDLE_PATH}"
+
+          (
+            cd "${DIST_DIR}"
+            sha256sum * > SHA256SUMS
+          )
+
+          echo "artifact_name=${ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "::notice::Packaged assets:"
+          ls -lah "${DIST_DIR}"
+
+      - name: Upload packaged assets artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: dist/*
+          if-no-files-found: error
+
+  upload-assets-to-release:
+    needs: [package-rc-assets]
+    if: ${{ inputs.upload_to_release }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged assets artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.package-rc-assets.outputs.artifact_name }}
+          path: dist
+
+      - name: Create or update GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.package-rc-assets.outputs.release_tag }}
+          SOURCE_REF: ${{ needs.package-rc-assets.outputs.source_ref }}
+          TAG_EXISTS: ${{ needs.package-rc-assets.outputs.tag_exists }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::notice::Release ${RELEASE_TAG} already exists; uploading assets with --clobber"
+          else
+            TARGET_ARGS=()
+            if [[ "${TAG_EXISTS}" != "true" ]]; then
+              TARGET_ARGS=(--target "${SOURCE_REF}")
+            fi
+
+            gh release create "${RELEASE_TAG}" "${TARGET_ARGS[@]}" \
+              --prerelease \
+              --title "GPU Operator ${RELEASE_TAG}" \
+              --notes "Release candidate assets for GPU Operator ${RELEASE_TAG}."
+          fi
+
+          gh release upload "${RELEASE_TAG}" dist/* --clobber
