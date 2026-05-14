@@ -30,9 +30,6 @@ RELATED_IMAGE_COMPONENTS = {
     "dcgm-exporter-image": "dcgmExporter",
     "dcgm-image": "dcgm",
     "container-toolkit-image": "toolkit",
-    "driver-image": "driver",
-    "driver-image-580": "driver",
-    "driver-image-535": "driver",
     "device-plugin-image": "devicePlugin",
     "gpu-feature-discovery-image": "gfd",
     "mig-manager-image": "migManager",
@@ -52,9 +49,6 @@ ENV_IMAGE_COMPONENTS = {
     "DCGM_IMAGE": "dcgm",
     "DCGM_EXPORTER_IMAGE": "dcgmExporter",
     "DEVICE_PLUGIN_IMAGE": "devicePlugin",
-    "DRIVER_IMAGE": "driver",
-    "DRIVER_IMAGE-580": "driver",
-    "DRIVER_IMAGE-535": "driver",
     "DRIVER_MANAGER_IMAGE": "driver.manager",
     "MIG_MANAGER_IMAGE": "migManager",
     "VFIO_MANAGER_IMAGE": "vfioManager",
@@ -66,6 +60,16 @@ ENV_IMAGE_COMPONENTS = {
 }
 
 OS_SPECIFIC_COMPONENTS = {"driver", "gdrcopy"}
+DRIVER_RELATED_IMAGES = {
+    "default": "driver-image",
+    "535": "driver-image-535",
+    "580": "driver-image-580",
+}
+DRIVER_ENV_IMAGES = {
+    "default": "DRIVER_IMAGE",
+    "535": "DRIVER_IMAGE-535",
+    "580": "DRIVER_IMAGE-580",
+}
 RELEASE_TAG_PATTERN = re.compile(
     r"^v?(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)"
     r"(?:-rc\.(?P<rc>[0-9]+))?$"
@@ -82,6 +86,15 @@ def component(values, path):
     for part in path.split("."):
         current = current.get(part, {})
     return current
+
+
+def driver_image_slot(values):
+    version = str(component(values, "driver").get("version") or "").strip()
+    if version.startswith("580"):
+        return "580"
+    if version.startswith("535"):
+        return "535"
+    return "default"
 
 
 def os_image_ref_candidates(
@@ -321,6 +334,7 @@ def main():
     image_refs = {}
     component_names = set(RELATED_IMAGE_COMPONENTS.values()) | set(ENV_IMAGE_COMPONENTS.values())
     component_names.add("operator")
+    component_names.add("driver")
 
     for component_name in sorted(component_names):
         image_ref_candidates = build_image_ref_candidates(
@@ -343,8 +357,15 @@ def main():
         csv.setdefault("metadata", {}).setdefault("annotations", {})["containerImage"] = operator_ref
 
     related_images = csv.get("spec", {}).get("relatedImages", [])
+    driver_slot = driver_image_slot(values)
+    driver_related_image_name = DRIVER_RELATED_IMAGES[driver_slot]
     for item in related_images:
-        component_name = RELATED_IMAGE_COMPONENTS.get(item.get("name"))
+        item_name = item.get("name")
+        if item_name == driver_related_image_name and "driver" in image_refs:
+            item["image"] = image_refs["driver"]
+            continue
+
+        component_name = RELATED_IMAGE_COMPONENTS.get(item_name)
         if component_name and component_name in image_refs:
             item["image"] = image_refs[component_name]
 
@@ -353,6 +374,10 @@ def main():
         for env_name, component_name in ENV_IMAGE_COMPONENTS.items()
         if component_name in image_refs
     }
+    driver_env_name = DRIVER_ENV_IMAGES[driver_slot]
+    if "driver" in image_refs:
+        env_refs[driver_env_name] = image_refs["driver"]
+
     update_operator_deployment(csv, operator_ref, env_refs)
     update_alm_examples(csv, image_refs)
     update_release_metadata(csv, args.release_tag)
