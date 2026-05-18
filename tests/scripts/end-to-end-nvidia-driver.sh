@@ -8,7 +8,7 @@ echo ""
 echo "--------------Installing the GPU Operator with NvidiaDriverCR Enabled--------------"
 echo "-----------------------------------------------------------------------------------"
 # Install the operator with nvidiaDriver mode set to true
-OPERATOR_OPTIONS="--set driver.nvidiaDriverCRD.enabled=true" ${SCRIPT_DIR}/install-operator.sh
+${SCRIPT_DIR}/install-operator.sh
 USE_NVIDIA_DRIVER_CR="true" "${SCRIPT_DIR}"/verify-operator.sh
 USE_NVIDIA_DRIVER_CR="true" "${SCRIPT_DIR}"/verify-operand-restarts.sh
 

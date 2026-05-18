@@ -169,7 +169,8 @@ spec:
     {{- end }}
   driver:
     enabled: {{ .Values.driver.enabled }}
-    useNvidiaDriverCRD: {{ .Values.driver.nvidiaDriverCRD.enabled }}
+    useNvidiaDriverCRD: {{ .Values.driver.useNvidiaDriverCRD }}
+    {{- if not .Values.driver.useNvidiaDriverCRD }}
     kernelModuleType: {{ .Values.driver.kernelModuleType }}
     usePrecompiled: {{ .Values.driver.usePrecompiled }}
     {{- if .Values.driver.repository }}
@@ -242,6 +243,10 @@ spec:
     {{- if .Values.driver.args }}
     args: {{ toYaml .Values.driver.args | nindent 6 }}
     {{- end }}
+    {{- if .Values.driver.hostNetwork }}
+    hostNetwork: {{ .Values.driver.hostNetwork }}
+    {{- end }}
+    {{- end }}
     {{- if .Values.driver.upgradePolicy }}
     upgradePolicy:
       autoUpgrade: {{ .Values.driver.upgradePolicy.autoUpgrade | default false }}
@@ -264,9 +269,6 @@ spec:
         {{- end }}
         timeoutSeconds: {{ .Values.driver.upgradePolicy.drain.timeoutSeconds }}
         deleteEmptyDir: {{ .Values.driver.upgradePolicy.drain.deleteEmptyDir | default false}}
-    {{- end }}
-    {{- if .Values.driver.hostNetwork }}
-    hostNetwork: {{ .Values.driver.hostNetwork }}
     {{- end }}
   vgpuManager:
     enabled: {{ .Values.vgpuManager.enabled }}

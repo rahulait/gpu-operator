@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
+	"github.com/NVIDIA/gpu-operator/internal/consts"
 )
 
 // Validator provides interface to validate NVIDIADriver fields
@@ -53,6 +54,9 @@ func (nsv *nodeSelectorValidator) Validate(ctx context.Context, cr *nvidiav1alph
 
 	names := map[string]struct{}{}
 	for di := range drivers.Items {
+		if isDefaultNVIDIADriver(&drivers.Items[di]) {
+			continue
+		}
 		nodeList, err := nsv.getNVIDIADriverSelectedNodes(ctx, &drivers.Items[di])
 		if err != nil {
 			return err
@@ -69,6 +73,14 @@ func (nsv *nodeSelectorValidator) Validate(ctx context.Context, cr *nvidiav1alph
 	}
 
 	return nil
+}
+
+func isDefaultNVIDIADriver(cr *nvidiav1alpha1.NVIDIADriver) bool {
+	if cr == nil {
+		return false
+	}
+	return cr.Name == consts.DefaultNVIDIADriverName &&
+		cr.Labels[consts.DefaultNVIDIADriverLabel] == "true"
 }
 
 // getNVIDIADriverSelectedNodes returns selected nodes based on the nodeselector labels set for a given NVIDIADriver instance

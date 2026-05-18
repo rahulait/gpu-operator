@@ -65,6 +65,15 @@ const (
 	// NVIDIADriverControllerIndexKey provides quick lookups for DaemonSets owned by an NVIDIADriver instance
 	NVIDIADriverControllerIndexKey = "metadata.nvidiadriver.controller"
 
+	// DefaultNVIDIADriverName is the Helm-managed fallback NVIDIADriver.
+	DefaultNVIDIADriverName = "default"
+	// DefaultNVIDIADriverLabel marks the fallback NVIDIADriver.
+	DefaultNVIDIADriverLabel = "nvidia.com/gpu-operator.default-driver"
+	// NVIDIADriverOwnerLabel is an operator-managed node label used to route each GPU node to one NVIDIADriver.
+	NVIDIADriverOwnerLabel = "nvidia.com/gpu.driver.owner"
+	// DefaultNVIDIADriverFinalizer prevents accidental deletion of the default NVIDIADriver.
+	DefaultNVIDIADriverFinalizer = "nvidia.com/gpu-operator.default-driver-protection"
+
 	// MinimumGDSVersionForOpenRM indicates the minimum GDS version that is supported only with OpenRM driver
 	MinimumGDSVersionForOpenRM = "v2.17.5"
 )
