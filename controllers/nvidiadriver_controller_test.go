@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -97,6 +98,7 @@ func TestReconcile(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
 	require.NoError(t, gpuv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
 
 	tests := []struct {
 		name        string

@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/NVIDIA/k8s-operator-libs/pkg/upgrade"
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	apiimagev1 "github.com/openshift/api/image/v1"
 	secv1 "github.com/openshift/api/security/v1"
@@ -48,6 +49,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	gpuv1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1"
+	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
 	driverconfig "github.com/NVIDIA/gpu-operator/internal/config"
 	"github.com/NVIDIA/gpu-operator/internal/consts"
 	"github.com/NVIDIA/gpu-operator/internal/utils"
@@ -4241,7 +4243,7 @@ func ocpHasDriverToolkitImageStream(n *ClusterPolicyController) (bool, error) {
 	return true, nil
 }
 
-func (n ClusterPolicyController) cleanupAllDriverDaemonSets(ctx context.Context) error {
+func (n ClusterPolicyController) cleanupAllDriverDaemonSets(ctx context.Context, orphanPods bool) error {
 	// Get all DaemonSets owned by ClusterPolicy
 	//
 	// (cdesiniotis) There is a limitation with the controller-runtime client where only a single field selector
@@ -4257,8 +4259,16 @@ func (n ClusterPolicyController) cleanupAllDriverDaemonSets(ctx context.Context)
 		ds := ds
 		// filter out DaemonSets which are not the NVIDIA driver/vgpu-manager
 		if strings.HasPrefix(ds.Name, commonDriverDaemonsetName) || strings.HasPrefix(ds.Name, commonVGPUManagerDaemonsetName) {
-			n.logger.Info("Deleting NVIDIA driver daemonset owned by ClusterPolicy", "Name", ds.Name)
-			err = n.client.Delete(ctx, &ds)
+			if orphanPods {
+				n.logger.Info("Deleting NVIDIA driver daemonset owned by ClusterPolicy with cascade=orphan", "Name", ds.Name)
+				propagationPolicy := metav1.DeletePropagationOrphan
+				err = n.client.Delete(ctx, &ds, &client.DeleteOptions{
+					PropagationPolicy: &propagationPolicy,
+				})
+			} else {
+				n.logger.Info("Deleting NVIDIA driver daemonset owned by ClusterPolicy", "Name", ds.Name)
+				err = n.client.Delete(ctx, &ds)
+			}
 			if err != nil {
 				return fmt.Errorf("error deleting NVIDIA driver daemonset: %w", err)
 			}
@@ -4266,6 +4276,72 @@ func (n ClusterPolicyController) cleanupAllDriverDaemonSets(ctx context.Context)
 	}
 
 	return nil
+}
+
+func (n ClusterPolicyController) labelNodesWithOrphanedDriverPods(ctx context.Context) error {
+	nvidiaDrivers := &nvidiav1alpha1.NVIDIADriverList{}
+	if err := n.client.List(ctx, nvidiaDrivers); err != nil {
+		return fmt.Errorf("failed to list NVIDIADriver CRs: %w", err)
+	}
+	if len(nvidiaDrivers.Items) == 0 {
+		return nil
+	}
+
+	pods := &corev1.PodList{}
+	if err := n.client.List(ctx, pods,
+		client.InNamespace(n.operatorNamespace),
+		client.MatchingLabels{AppComponentLabelKey: AppComponentLabelValue},
+	); err != nil {
+		return fmt.Errorf("failed to list NVIDIA driver pods: %w", err)
+	}
+
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if len(pod.OwnerReferences) > 0 || pod.Status.Phase != corev1.PodRunning || pod.Spec.NodeName == "" {
+			continue
+		}
+
+		node := &corev1.Node{}
+		if err := n.client.Get(ctx, types.NamespacedName{Name: pod.Spec.NodeName}, node); err != nil {
+			n.logger.Error(err, "failed to get node for orphaned NVIDIA driver pod", "pod", pod.Name, "node", pod.Spec.NodeName)
+			continue
+		}
+		if !nodeMatchesAnyNVIDIADriver(node, nvidiaDrivers.Items) {
+			continue
+		}
+
+		upgradeStateLabel := upgrade.GetUpgradeStateLabelKey()
+		if node.Labels != nil && node.Labels[upgradeStateLabel] == upgrade.UpgradeStateUpgradeRequired {
+			continue
+		}
+		if node.Labels == nil {
+			node.Labels = map[string]string{}
+		}
+		node.Labels[upgradeStateLabel] = upgrade.UpgradeStateUpgradeRequired
+		if err := n.client.Update(ctx, node); err != nil {
+			n.logger.Error(err, "failed to label node with orphaned NVIDIA driver pod", "pod", pod.Name, "node", node.Name)
+		}
+	}
+
+	return nil
+}
+
+func nodeMatchesAnyNVIDIADriver(node *corev1.Node, nvidiaDrivers []nvidiav1alpha1.NVIDIADriver) bool {
+	for _, nvidiaDriver := range nvidiaDrivers {
+		if nodeMatchesSelector(node, nvidiaDriver.GetNodeSelector()) {
+			return true
+		}
+	}
+	return false
+}
+
+func nodeMatchesSelector(node *corev1.Node, selector map[string]string) bool {
+	for key, value := range selector {
+		if node.Labels[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 // cleanupStalePrecompiledDaemonsets deletes stale driver daemonsets which can happen

@@ -42,6 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	gpuv1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1"
+	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
 	"github.com/NVIDIA/gpu-operator/internal/conditions"
 )
 
@@ -143,6 +144,16 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	clusterPolicyCtrl.operatorMetrics.reconciliationTotal.Inc()
+
+	if err := assignNVIDIADriverOwners(ctx, r.Client); err != nil {
+		clusterPolicyCtrl.operatorMetrics.reconciliationStatus.Set(reconciliationStatusNotReady)
+		clusterPolicyCtrl.operatorMetrics.reconciliationFailed.Inc()
+		if condErr := r.conditionUpdater.SetConditionsError(ctx, instance, conditions.ReconcileFailed, err.Error()); condErr != nil {
+			r.Log.Error(condErr, "failed to set condition")
+		}
+		return ctrl.Result{}, err
+	}
+
 	overallStatus := gpuv1.Ready
 	statesNotReady := []string{}
 	for {
@@ -168,6 +179,10 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if clusterPolicyCtrl.last() {
 			break
 		}
+	}
+
+	if err := clusterPolicyCtrl.labelNodesWithOrphanedDriverPods(ctx); err != nil {
+		r.Log.Error(err, "failed to label nodes with orphaned NVIDIA driver pods")
 	}
 
 	// if any state is not ready, requeue for reconcile after 5 seconds
@@ -367,6 +382,28 @@ func (r *ClusterPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 
 	// Watch for changes to Node labels and requeue the owner ClusterPolicy
 	err = addWatchNewGPUNode(r, c, mgr)
+	if err != nil {
+		return err
+	}
+
+	err = c.Watch(
+		source.Kind(mgr.GetCache(),
+			&nvidiav1alpha1.NVIDIADriver{},
+			handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, _ *nvidiav1alpha1.NVIDIADriver) []reconcile.Request {
+				list := &gpuv1.ClusterPolicyList{}
+				if err := mgr.GetClient().List(ctx, list); err != nil {
+					return []reconcile.Request{}
+				}
+				requests := make([]reconcile.Request, 0, len(list.Items))
+				for _, item := range list.Items {
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{Name: item.GetName()},
+					})
+				}
+				return requests
+			}),
+		),
+	)
 	if err != nil {
 		return err
 	}

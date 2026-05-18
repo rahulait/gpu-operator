@@ -1,30 +1,30 @@
-{{- if .Values.driver.enabled }}
-{{- if and .Values.driver.nvidiaDriverCRD.enabled .Values.driver.nvidiaDriverCRD.deployDefaultCR }}
+{{- if and .Values.driver.enabled .Values.driver.useNvidiaDriverCRD }}
 apiVersion: nvidia.com/v1alpha1
 kind: NVIDIADriver
 metadata:
   name: default
+  labels:
+    {{- include "gpu-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: "nvidia-driver"
+    nvidia.com/gpu-operator.default-driver: "true"
 spec:
-  repository: {{ .Values.driver.repository }}
-  image: {{ .Values.driver.image }}
-  version: {{ .Values.driver.version }}
+  driverType: gpu
   kernelModuleType: {{ .Values.driver.kernelModuleType }}
   usePrecompiled: {{ .Values.driver.usePrecompiled }}
-  driverType: {{ .Values.driver.nvidiaDriverCRD.driverType | default "gpu" }}
-  {{- if .Values.daemonsets.annotations }}
-  annotations: {{ toYaml .Values.daemonsets.annotations | nindent 6 }}
+  {{- if .Values.driver.repository }}
+  repository: {{ .Values.driver.repository }}
   {{- end }}
-  {{- if .Values.daemonsets.labels }}
-  labels: {{ toYaml .Values.daemonsets.labels | nindent 6 }}
+  {{- if .Values.driver.image }}
+  image: {{ .Values.driver.image }}
   {{- end }}
-  {{- if .Values.driver.nvidiaDriverCRD.nodeSelector }}
-  nodeSelector: {{ toYaml .Values.driver.nvidiaDriverCRD.nodeSelector | nindent 6 }}
+  {{- if .Values.driver.version }}
+  version: {{ .Values.driver.version | quote }}
+  {{- end }}
+  {{- if .Values.driver.imagePullPolicy }}
+  imagePullPolicy: {{ .Values.driver.imagePullPolicy }}
   {{- end }}
   {{- if .Values.driver.imagePullSecrets }}
   imagePullSecrets: {{ toYaml .Values.driver.imagePullSecrets | nindent 4 }}
-  {{- end }}
-  {{- if .Values.driver.manager }}
-  manager: {{ toYaml .Values.driver.manager | nindent 4 }}
   {{- end }}
   {{- if .Values.driver.startupProbe }}
   startupProbe: {{ toYaml .Values.driver.startupProbe | nindent 4 }}
@@ -35,11 +35,81 @@ spec:
   {{- if .Values.driver.readinessProbe }}
   readinessProbe: {{ toYaml .Values.driver.readinessProbe | nindent 4 }}
   {{- end }}
+  {{- if .Values.driver.rdma }}
   rdma:
     enabled: {{ .Values.driver.rdma.enabled }}
     useHostMofed: {{ .Values.driver.rdma.useHostMofed }}
-  {{- if .Values.daemonsets.tolerations }}
-  tolerations: {{ toYaml .Values.daemonsets.tolerations | nindent 6 }}
+  {{- end }}
+  {{- if .Values.gds }}
+  gds:
+    enabled: {{ .Values.gds.enabled }}
+    {{- if .Values.gds.repository }}
+    repository: {{ .Values.gds.repository }}
+    {{- end }}
+    {{- if .Values.gds.image }}
+    image: {{ .Values.gds.image }}
+    {{- end }}
+    version: {{ .Values.gds.version | quote }}
+    {{- if .Values.gds.imagePullPolicy }}
+    imagePullPolicy: {{ .Values.gds.imagePullPolicy }}
+    {{- end }}
+    {{- if .Values.gds.imagePullSecrets }}
+    imagePullSecrets: {{ toYaml .Values.gds.imagePullSecrets | nindent 6 }}
+    {{- end }}
+    {{- if .Values.gds.env }}
+    env: {{ toYaml .Values.gds.env | nindent 6 }}
+    {{- end }}
+    {{- if .Values.gds.args }}
+    args: {{ toYaml .Values.gds.args | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.gdrcopy }}
+  gdrcopy:
+    enabled: {{ .Values.gdrcopy.enabled | default false }}
+    {{- if .Values.gdrcopy.repository }}
+    repository: {{ .Values.gdrcopy.repository }}
+    {{- end }}
+    {{- if .Values.gdrcopy.image }}
+    image: {{ .Values.gdrcopy.image }}
+    {{- end }}
+    version: {{ .Values.gdrcopy.version | quote }}
+    {{- if .Values.gdrcopy.imagePullPolicy }}
+    imagePullPolicy: {{ .Values.gdrcopy.imagePullPolicy }}
+    {{- end }}
+    {{- if .Values.gdrcopy.imagePullSecrets }}
+    imagePullSecrets: {{ toYaml .Values.gdrcopy.imagePullSecrets | nindent 6 }}
+    {{- end }}
+    {{- if .Values.gdrcopy.env }}
+    env: {{ toYaml .Values.gdrcopy.env | nindent 6 }}
+    {{- end }}
+    {{- if .Values.gdrcopy.args }}
+    args: {{ toYaml .Values.gdrcopy.args | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  manager:
+    {{- if .Values.driver.manager.repository }}
+    repository: {{ .Values.driver.manager.repository }}
+    {{- end }}
+    {{- if .Values.driver.manager.image }}
+    image: {{ .Values.driver.manager.image }}
+    {{- end }}
+    {{- if .Values.driver.manager.version }}
+    version: {{ .Values.driver.manager.version | quote }}
+    {{- end }}
+    {{- if .Values.driver.manager.imagePullPolicy }}
+    imagePullPolicy: {{ .Values.driver.manager.imagePullPolicy }}
+    {{- end }}
+    {{- if .Values.driver.manager.env }}
+    env: {{ toYaml .Values.driver.manager.env | nindent 6 }}
+    {{- end }}
+  {{- if .Values.driver.resources }}
+  resources: {{ toYaml .Values.driver.resources | nindent 4 }}
+  {{- end }}
+  {{- if .Values.driver.args }}
+  args: {{ toYaml .Values.driver.args | nindent 4 }}
+  {{- end }}
+  {{- if .Values.driver.env }}
+  env: {{ toYaml .Values.driver.env | nindent 4 }}
   {{- end }}
   {{- if .Values.driver.repoConfig.configMapName }}
   repoConfig:
@@ -69,63 +139,21 @@ spec:
   {{- if .Values.driver.secretEnv }}
   secretEnv: {{ .Values.driver.secretEnv }}
   {{- end }}
-  {{- if .Values.driver.resources }}
-  resources: {{ toYaml .Values.driver.resources | nindent 6 }}
+  labels:
+    {{- include "gpu-operator.operand-labels" . | nindent 4 }}
+  {{- if .Values.daemonsets.annotations }}
+  annotations: {{ toYaml .Values.daemonsets.annotations | nindent 4 }}
   {{- end }}
-  {{- if .Values.driver.env }}
-  env: {{ toYaml .Values.driver.env | nindent 6 }}
+  {{- if .Values.daemonsets.tolerations }}
+  tolerations: {{ toYaml .Values.daemonsets.tolerations | nindent 4 }}
   {{- end }}
-  {{- if .Values.driver.args }}
-  args: {{ toYaml .Values.driver.args | nindent 6 }}
+  {{- if .Values.daemonsets.priorityClassName }}
+  priorityClassName: {{ .Values.daemonsets.priorityClassName }}
+  {{- end }}
+  {{- if .Values.daemonsets.podSecurityContext }}
+  podSecurityContext: {{ toYaml .Values.daemonsets.podSecurityContext | nindent 4 }}
   {{- end }}
   {{- if .Values.driver.hostNetwork }}
   hostNetwork: {{ .Values.driver.hostNetwork }}
   {{- end }}
-  {{- if .Values.gds.enabled }}
-  gds:
-    enabled: {{ .Values.gds.enabled }}
-    {{- if .Values.gds.repository }}
-    repository: {{ .Values.gds.repository }}
-    {{- end }}
-    {{- if .Values.gds.image }}
-    image: {{ .Values.gds.image }}
-    {{- end }}
-    version: {{ .Values.gds.version | quote }}
-    {{- if .Values.gds.imagePullPolicy }}
-    imagePullPolicy: {{ .Values.gds.imagePullPolicy }}
-    {{- end }}
-    {{- if .Values.gds.imagePullSecrets }}
-    imagePullSecrets: {{ toYaml .Values.gds.imagePullSecrets | nindent 8 }}
-    {{- end }}
-    {{- if .Values.gds.env }}
-    env: {{ toYaml .Values.gds.env | nindent 6 }}
-    {{- end }}
-    {{- if .Values.gds.args }}
-    args: {{ toYaml .Values.gds.args | nindent 6 }}
-    {{- end }}
-  {{- end }}
-  {{- if .Values.gdrcopy }}
-  gdrcopy:
-    enabled: {{ .Values.gdrcopy.enabled | default false  }}
-    {{- if .Values.gdrcopy.repository }}
-    repository: {{ .Values.gdrcopy.repository }}
-    {{- end }}
-    {{- if .Values.gdrcopy.image }}
-    image: {{ .Values.gdrcopy.image }}
-    {{- end }}
-    version: {{ .Values.gdrcopy.version | quote }}
-    {{- if .Values.gdrcopy.imagePullPolicy }}
-    imagePullPolicy: {{ .Values.gdrcopy.imagePullPolicy }}
-    {{- end }}
-    {{- if .Values.gdrcopy.imagePullSecrets }}
-    imagePullSecrets: {{ toYaml .Values.gdrcopy.imagePullSecrets | nindent 8 }}
-    {{- end }}
-    {{- if .Values.gdrcopy.env }}
-    env: {{ toYaml .Values.gdrcopy.env | nindent 6 }}
-    {{- end }}
-    {{- if .Values.gdrcopy.args }}
-    args: {{ toYaml .Values.gdrcopy.args | nindent 6 }}
-    {{- end  }}
-  {{- end }}
-{{- end }}
 {{- end }}

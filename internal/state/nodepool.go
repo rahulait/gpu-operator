@@ -26,6 +26,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/NVIDIA/gpu-operator/internal/consts"
 )
 
 const (
@@ -55,13 +57,14 @@ type nodePool struct {
 //
 // Each nodePool object contains information needed to identify the corresonding node pool.
 // Most importantly, it contains a nodeSelector used to identify the node pool.
-func getNodePools(ctx context.Context, k8sClient client.Client, selector map[string]string, precompiled bool, openshift bool) ([]nodePool, error) {
+func getNodePools(ctx context.Context, k8sClient client.Client, driverName string, selector map[string]string, precompiled bool, openshift bool) ([]nodePool, error) {
 	nodePoolMap := make(map[string]nodePool)
 
 	logger := log.FromContext(ctx)
 
 	nodeSelector := map[string]string{
-		"nvidia.com/gpu.present": "true",
+		consts.GPUPresentLabel:        "true",
+		consts.NVIDIADriverOwnerLabel: driverName,
 	}
 
 	maps.Copy(nodeSelector, selector)
