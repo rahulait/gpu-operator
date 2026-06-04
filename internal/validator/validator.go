@@ -76,11 +76,7 @@ func (nsv *nodeSelectorValidator) Validate(ctx context.Context, cr *nvidiav1alph
 }
 
 func isDefaultNVIDIADriver(cr *nvidiav1alpha1.NVIDIADriver) bool {
-	if cr == nil {
-		return false
-	}
-	return cr.Name == consts.DefaultNVIDIADriverName &&
-		cr.Labels[consts.DefaultNVIDIADriverLabel] == "true"
+	return cr != nil && cr.Name == consts.DefaultNVIDIADriverName
 }
 
 // getNVIDIADriverSelectedNodes returns selected nodes based on the nodeselector labels set for a given NVIDIADriver instance

@@ -22,7 +22,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gpuv1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1"
 	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
@@ -30,11 +29,7 @@ import (
 )
 
 func isDefaultNVIDIADriver(driver *nvidiav1alpha1.NVIDIADriver) bool {
-	if driver == nil {
-		return false
-	}
-	return isDefaultNVIDIADriverName(driver) &&
-		driver.Labels[consts.DefaultNVIDIADriverLabel] == "true"
+	return isDefaultNVIDIADriverName(driver)
 }
 
 func isDefaultNVIDIADriverName(driver *nvidiav1alpha1.NVIDIADriver) bool {
@@ -62,10 +57,6 @@ func assignNVIDIADriverOwners(ctx context.Context, c client.Client) error {
 		}
 		specificDrivers = append(specificDrivers, drivers.Items[i])
 	}
-	if defaultDriver == nil && len(specificDrivers) == 0 {
-		return nil
-	}
-
 	nodes := &corev1.NodeList{}
 	if err := c.List(ctx, nodes, client.MatchingLabels{consts.GPUPresentLabel: "true"}); err != nil {
 		return fmt.Errorf("failed to list GPU nodes: %w", err)
@@ -73,6 +64,7 @@ func assignNVIDIADriverOwners(ctx context.Context, c client.Client) error {
 
 	for i := range nodes.Items {
 		node := &nodes.Items[i]
+		originalNode := node.DeepCopy()
 		owner := ""
 		conflictingOwners := 0
 		for _, driver := range specificDrivers {
@@ -83,11 +75,20 @@ func assignNVIDIADriverOwners(ctx context.Context, c client.Client) error {
 		}
 		if conflictingOwners > 1 {
 			continue
-		}
-		if owner == "" && defaultDriver != nil {
+		} else if owner == "" && defaultDriver != nil && nodeMatchesSelector(node, defaultDriver.GetNodeSelector()) {
 			owner = defaultDriver.Name
 		}
 		if owner == "" {
+			if node.Labels == nil {
+				continue
+			}
+			if _, ok := node.Labels[consts.NVIDIADriverOwnerLabel]; !ok {
+				continue
+			}
+			delete(node.Labels, consts.NVIDIADriverOwnerLabel)
+			if err := c.Patch(ctx, node, client.MergeFrom(originalNode)); err != nil {
+				return fmt.Errorf("failed to remove NVIDIADriver owner label for node %s: %w", node.Name, err)
+			}
 			continue
 		}
 		if node.Labels != nil && node.Labels[consts.NVIDIADriverOwnerLabel] == owner {
@@ -97,44 +98,10 @@ func assignNVIDIADriverOwners(ctx context.Context, c client.Client) error {
 			node.Labels = map[string]string{}
 		}
 		node.Labels[consts.NVIDIADriverOwnerLabel] = owner
-		if err := c.Update(ctx, node); err != nil {
+		if err := c.Patch(ctx, node, client.MergeFrom(originalNode)); err != nil {
 			return fmt.Errorf("failed to update NVIDIADriver owner label for node %s: %w", node.Name, err)
 		}
 	}
 
 	return nil
-}
-
-func ensureDefaultNVIDIADriverMetadata(driver *nvidiav1alpha1.NVIDIADriver) bool {
-	changed := false
-	if driver.Labels == nil {
-		driver.Labels = map[string]string{}
-		changed = true
-	}
-	for key, value := range map[string]string{
-		consts.DefaultNVIDIADriverLabel: "true",
-	} {
-		if driver.Labels[key] != value {
-			driver.Labels[key] = value
-			changed = true
-		}
-	}
-	if driver.GetDeletionTimestamp() == nil && !controllerutil.ContainsFinalizer(driver, consts.DefaultNVIDIADriverFinalizer) {
-		controllerutil.AddFinalizer(driver, consts.DefaultNVIDIADriverFinalizer)
-		changed = true
-	}
-	return changed
-}
-
-func allowDefaultNVIDIADriverDeletion(clusterPolicies []gpuv1.ClusterPolicy) bool {
-	if len(clusterPolicies) == 0 {
-		return true
-	}
-	for i := range clusterPolicies {
-		if clusterPolicies[i].GetDeletionTimestamp() == nil &&
-			clusterPolicies[i].Spec.Driver.UseNvidiaDriverCRDType() {
-			return false
-		}
-	}
-	return true
 }

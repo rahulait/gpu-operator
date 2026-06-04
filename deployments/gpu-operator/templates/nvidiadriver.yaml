@@ -6,7 +6,6 @@ metadata:
   labels:
     {{- include "gpu-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: "nvidia-driver"
-    nvidia.com/gpu-operator.default-driver: "true"
 spec:
   driverType: gpu
   kernelModuleType: {{ .Values.driver.kernelModuleType }}

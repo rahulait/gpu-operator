@@ -77,7 +77,6 @@ func nodeSelector(labels map[string]string) driverOptions {
 func defaultDriver() driverOptions {
 	return func(c *nvidiav1alpha1.NVIDIADriver) {
 		c.Name = consts.DefaultNVIDIADriverName
-		c.Labels = map[string]string{consts.DefaultNVIDIADriverLabel: "true"}
 	}
 }
 

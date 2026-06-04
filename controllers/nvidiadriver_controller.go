@@ -33,7 +33,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -111,7 +110,7 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if len(clusterPolicyList.Items) == 0 {
-		if handled, err := r.handleDefaultNVIDIADriverDeletion(ctx, instance, nil); handled || err != nil {
+		if handled, err := r.handleDefaultNVIDIADriverDeletion(ctx, instance); handled || err != nil {
 			return reconcile.Result{}, err
 		}
 		err := fmt.Errorf("no ClusterPolicy object found in the cluster")
@@ -124,7 +123,7 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	clusterPolicyInstance := clusterPolicyList.Items[0]
 
-	if handled, err := r.handleDefaultNVIDIADriverDeletion(ctx, instance, clusterPolicyList.Items); handled || err != nil {
+	if handled, err := r.handleDefaultNVIDIADriverDeletion(ctx, instance); handled || err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -137,13 +136,6 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			logger.Error(condErr, "failed to set condition")
 		}
 		return reconcile.Result{}, nil
-	}
-
-	if isDefaultNVIDIADriverName(instance) && ensureDefaultNVIDIADriverMetadata(instance) {
-		if err := r.Update(ctx, instance); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update default NVIDIADriver metadata: %w", err)
-		}
-		return reconcile.Result{Requeue: true}, nil
 	}
 
 	// Create a new InfoCatalog which is a generic interface for passing information to state managers
@@ -173,7 +165,7 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if condErr := r.conditionUpdater.SetConditionsError(ctx, instance, conditions.ReconcileFailed, err.Error()); condErr != nil {
 			logger.Error(condErr, "failed to set condition")
 		}
-		return reconcile.Result{}, nil
+		return reconcile.Result{}, err
 	}
 
 	if instance.Spec.UsePrecompiledDrivers() && (instance.Spec.IsGDSEnabled() || instance.Spec.IsGDRCopyEnabled()) {
@@ -245,22 +237,11 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return reconcile.Result{}, nil
 }
 
-func (r *NVIDIADriverReconciler) handleDefaultNVIDIADriverDeletion(ctx context.Context, driver *nvidiav1alpha1.NVIDIADriver, clusterPolicies []gpuv1.ClusterPolicy) (bool, error) {
+func (r *NVIDIADriverReconciler) handleDefaultNVIDIADriverDeletion(ctx context.Context, driver *nvidiav1alpha1.NVIDIADriver) (bool, error) {
 	if !isDefaultNVIDIADriverName(driver) || driver.GetDeletionTimestamp() == nil {
 		return false, nil
 	}
-	if !controllerutil.ContainsFinalizer(driver, consts.DefaultNVIDIADriverFinalizer) {
-		return true, nil
-	}
-	if !allowDefaultNVIDIADriverDeletion(clusterPolicies) {
-		log.FromContext(ctx).Info("Default NVIDIADriver delete requested; keeping finalizer while ClusterPolicy exists")
-		return true, nil
-	}
-
-	controllerutil.RemoveFinalizer(driver, consts.DefaultNVIDIADriverFinalizer)
-	if err := r.Update(ctx, driver); err != nil {
-		return true, fmt.Errorf("failed to remove default NVIDIADriver finalizer: %w", err)
-	}
+	log.FromContext(ctx).Info("Default NVIDIADriver delete requested; skipping reconciliation")
 	return true, nil
 }
 
