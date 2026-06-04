@@ -166,8 +166,8 @@ spec:
     {{- end }}
   driver:
     enabled: {{ .Values.driver.enabled }}
-    useNvidiaDriverCRD: {{ .Values.driver.useNvidiaDriverCRD }}
-    {{- if not .Values.driver.useNvidiaDriverCRD }}
+    useNvidiaDriverCRD: {{ .Values.driver.nvidiaDriverCRD.enabled }}
+    {{- if not .Values.driver.nvidiaDriverCRD.enabled }}
     kernelModuleType: {{ .Values.driver.kernelModuleType }}
     usePrecompiled: {{ .Values.driver.usePrecompiled }}
     {{- if .Values.driver.repository }}

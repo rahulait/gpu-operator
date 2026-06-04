@@ -1,4 +1,4 @@
-{{- if and .Values.driver.enabled .Values.driver.useNvidiaDriverCRD }}
+{{- if and .Values.driver.enabled .Values.driver.nvidiaDriverCRD.enabled .Values.driver.nvidiaDriverCRD.deployDefaultCR }}
 apiVersion: nvidia.com/v1alpha1
 kind: NVIDIADriver
 metadata:
@@ -7,7 +7,8 @@ metadata:
     {{- include "gpu-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: "nvidia-driver"
 spec:
-  driverType: gpu
+  driverType: {{ .Values.driver.nvidiaDriverCRD.driverType }}
+  nodeSelector:{{ toYaml .Values.driver.nvidiaDriverCRD.nodeSelector | nindent 4 }}
   kernelModuleType: {{ .Values.driver.kernelModuleType }}
   usePrecompiled: {{ .Values.driver.usePrecompiled }}
   {{- if .Values.driver.repository }}

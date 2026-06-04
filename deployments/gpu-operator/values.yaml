@@ -134,7 +134,11 @@ mig:
 driver:
   enabled: true
   # Use NVIDIADriver CRs to manage driver deployment.
-  useNvidiaDriverCRD: false
+  nvidiaDriverCRD:
+    enabled: false
+    deployDefaultCR: true
+    driverType: gpu
+    nodeSelector: {}
   kernelModuleType: "auto"
 
   # NOTE: useOpenKernelModules has been deprecated and made no-op. Please use kernelModuleType instead.
