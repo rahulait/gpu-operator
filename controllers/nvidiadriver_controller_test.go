@@ -28,15 +28,19 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	gpuv1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1"
 	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
+	"github.com/NVIDIA/gpu-operator/internal/consts"
 	"github.com/NVIDIA/gpu-operator/internal/validator"
 )
 
@@ -70,6 +74,15 @@ func (f *FakeNodeSelectorValidator) Validate(ctx context.Context, cr *nvidiav1al
 	return f.CustomError
 }
 
+type patchFailingClient struct {
+	client.Client
+	patchErr error
+}
+
+func (c *patchFailingClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	return c.patchErr
+}
+
 // newTestLogger creates a zap.Logger that writes to an in-memory buffer for testing
 func newTestLogger() (logr.Logger, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
@@ -97,6 +110,7 @@ func TestReconcile(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
 	require.NoError(t, gpuv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
 
 	tests := []struct {
 		name        string
@@ -247,6 +261,59 @@ func TestReconcileConflictSetsNotReadyState(t *testing.T) {
 	require.Equal(t, nvidiav1alpha1.NotReady, updater.LastErrorState)
 }
 
+func TestReconcileReturnsErrorWhenOwnerAssignmentFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
+	require.NoError(t, gpuv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+
+	driver := &nvidiav1alpha1.NVIDIADriver{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-driver",
+			Namespace: "default",
+		},
+		Spec: nvidiav1alpha1.NVIDIADriverSpec{
+			NodeSelector: map[string]string{"nodepool": "a"},
+		},
+	}
+	cp := &gpuv1.ClusterPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		Spec: gpuv1.ClusterPolicySpec{
+			Driver: gpuv1.DriverSpec{
+				UseNvidiaDriverCRD: ptr.To(true),
+			},
+		},
+	}
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "gpu-node",
+		Labels: map[string]string{
+			"nodepool":               "a",
+			"nvidia.com/gpu.present": "true",
+		},
+	}}
+	patchErr := errors.New("patch failed")
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cp, driver, node).Build()
+	updater := &FakeConditionUpdater{}
+
+	reconciler := &NVIDIADriverReconciler{
+		Client:                &patchFailingClient{Client: k8sClient, patchErr: patchErr},
+		Scheme:                scheme,
+		conditionUpdater:      updater,
+		nodeSelectorValidator: &FakeNodeSelectorValidator{},
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      driver.Name,
+			Namespace: driver.Namespace,
+		},
+	})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, patchErr.Error())
+	require.Equal(t, nvidiav1alpha1.NotReady, updater.LastErrorState)
+}
+
 func TestEnqueueAllNVIDIADrivers(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
@@ -266,4 +333,46 @@ func TestEnqueueAllNVIDIADrivers(t *testing.T) {
 	}
 	sort.Strings(got)
 	require.Equal(t, []string{"default/driver-a", "default/driver-b"}, got)
+}
+
+func TestNVIDIADriverGenerationOrDefaultLabelChangedPredicate(t *testing.T) {
+	p := nvidiaDriverGenerationOrDefaultLabelChangedPredicate()
+
+	require.True(t, p.Update(event.TypedUpdateEvent[*nvidiav1alpha1.NVIDIADriver]{
+		ObjectOld: &nvidiav1alpha1.NVIDIADriver{ObjectMeta: metav1.ObjectMeta{Name: "driver", Generation: 1}},
+		ObjectNew: &nvidiav1alpha1.NVIDIADriver{ObjectMeta: metav1.ObjectMeta{Name: "driver", Generation: 2}},
+	}))
+
+	require.True(t, p.Update(event.TypedUpdateEvent[*nvidiav1alpha1.NVIDIADriver]{
+		ObjectOld: &nvidiav1alpha1.NVIDIADriver{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "driver",
+				Generation: 1,
+			},
+		},
+		ObjectNew: &nvidiav1alpha1.NVIDIADriver{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "driver",
+				Generation: 1,
+				Labels:     map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
+			},
+		},
+	}))
+
+	require.False(t, p.Update(event.TypedUpdateEvent[*nvidiav1alpha1.NVIDIADriver]{
+		ObjectOld: &nvidiav1alpha1.NVIDIADriver{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "driver",
+				Generation: 1,
+				Labels:     map[string]string{"example.com/label": "old"},
+			},
+		},
+		ObjectNew: &nvidiav1alpha1.NVIDIADriver{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "driver",
+				Generation: 1,
+				Labels:     map[string]string{"example.com/label": "new"},
+			},
+		},
+	}))
 }

@@ -270,7 +270,7 @@ func (s *stateDriver) getManifestObjects(ctx context.Context, cr *nvidiav1alpha1
 	}
 
 	isOpenshift := runtimeSpec.OpenshiftVersion != ""
-	nodePools, err := getNodePools(ctx, s.client, cr.Spec.NodeSelector, cr.Spec.UsePrecompiledDrivers(), isOpenshift)
+	nodePools, err := getNodePools(ctx, s.client, cr.Name, cr.Spec.NodeSelector, cr.Spec.UsePrecompiledDrivers(), isOpenshift)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node pools: %w", err)
 	}

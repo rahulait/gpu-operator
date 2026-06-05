@@ -110,6 +110,9 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if len(clusterPolicyList.Items) == 0 {
+		if handled, err := r.handleDefaultNVIDIADriverDeletion(ctx, instance); handled || err != nil {
+			return reconcile.Result{}, err
+		}
 		err := fmt.Errorf("no ClusterPolicy object found in the cluster")
 		logger.Error(err, "failed to get ClusterPolicy object")
 		instance.Status.State = nvidiav1alpha1.NotReady
@@ -120,8 +123,12 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	clusterPolicyInstance := clusterPolicyList.Items[0]
 
+	if handled, err := r.handleDefaultNVIDIADriverDeletion(ctx, instance); handled || err != nil {
+		return reconcile.Result{}, err
+	}
+
 	// Ensure that ClusterPolicy is configured to use NVIDIADriver CRD
-	if !clusterPolicyInstance.Spec.Driver.UseNvidiaDriverCRDType() {
+	if !nvidiaDriverCRDEnabled(&clusterPolicyInstance) {
 		msg := "useNvidiaDriverCRD is not enabled in ClusterPolicy"
 		logger.V(consts.LogLevelWarning).Info("NVIDIADriver reconciliation skipped", "reason", msg)
 		instance.Status.State = nvidiav1alpha1.Disabled
@@ -150,6 +157,15 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			logger.Error(condErr, "failed to set condition")
 		}
 		return reconcile.Result{}, nil
+	}
+
+	if err := assignNVIDIADriverOwners(ctx, r.Client); err != nil {
+		logger.Error(err, "failed to assign NVIDIADriver owners to nodes")
+		instance.Status.State = nvidiav1alpha1.NotReady
+		if condErr := r.conditionUpdater.SetConditionsError(ctx, instance, conditions.ReconcileFailed, err.Error()); condErr != nil {
+			logger.Error(condErr, "failed to set condition")
+		}
+		return reconcile.Result{}, err
 	}
 
 	if instance.Spec.UsePrecompiledDrivers() && (instance.Spec.IsGDSEnabled() || instance.Spec.IsGDRCopyEnabled()) {
@@ -219,6 +235,14 @@ func (r *NVIDIADriverReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, condErr
 	}
 	return reconcile.Result{}, nil
+}
+
+func (r *NVIDIADriverReconciler) handleDefaultNVIDIADriverDeletion(ctx context.Context, driver *nvidiav1alpha1.NVIDIADriver) (bool, error) {
+	if !isDefaultNVIDIADriver(driver) || driver.GetDeletionTimestamp() == nil {
+		return false, nil
+	}
+	log.FromContext(ctx).Info("Default NVIDIADriver delete requested; skipping reconciliation")
+	return true, nil
 }
 
 func (r *NVIDIADriverReconciler) updateCrStatus(
@@ -316,7 +340,7 @@ func (r *NVIDIADriverReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 		mgr.GetCache(),
 		&nvidiav1alpha1.NVIDIADriver{},
 		handler.TypedEnqueueRequestsFromMapFunc(nvidiaDriverMapFn),
-		predicate.TypedGenerationChangedPredicate[*nvidiav1alpha1.NVIDIADriver]{},
+		nvidiaDriverGenerationOrDefaultLabelChangedPredicate(),
 	),
 	)
 	if err != nil {
@@ -412,4 +436,31 @@ func (r *NVIDIADriverReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 	}
 
 	return nil
+}
+
+// nvidiaDriverGenerationOrDefaultLabelChangedPredicate reconciles NVIDIADrivers on spec changes and
+// on changes to the default-driver label, which is metadata but affects ownership semantics.
+func nvidiaDriverGenerationOrDefaultLabelChangedPredicate() predicate.TypedPredicate[*nvidiav1alpha1.NVIDIADriver] {
+	return predicate.TypedFuncs[*nvidiav1alpha1.NVIDIADriver]{
+		CreateFunc: func(event.TypedCreateEvent[*nvidiav1alpha1.NVIDIADriver]) bool {
+			return true
+		},
+		DeleteFunc: func(event.TypedDeleteEvent[*nvidiav1alpha1.NVIDIADriver]) bool {
+			return true
+		},
+		UpdateFunc: func(e event.TypedUpdateEvent[*nvidiav1alpha1.NVIDIADriver]) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return true
+			}
+			if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+				return true
+			}
+			oldLabels := e.ObjectOld.GetLabels()
+			newLabels := e.ObjectNew.GetLabels()
+			return oldLabels[consts.DefaultNVIDIADriverLabel] != newLabels[consts.DefaultNVIDIADriverLabel]
+		},
+		GenericFunc: func(event.TypedGenericEvent[*nvidiav1alpha1.NVIDIADriver]) bool {
+			return false
+		},
+	}
 }

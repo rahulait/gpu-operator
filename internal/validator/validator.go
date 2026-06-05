@@ -19,12 +19,15 @@ package validator
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
+	"github.com/NVIDIA/gpu-operator/internal/consts"
 )
 
 // Validator provides interface to validate NVIDIADriver fields
@@ -45,30 +48,58 @@ func NewNodeSelectorValidator(c client.Client) Validator {
 // Check returns error when nodes matching with the selector labels of current instance of NVIDIADriver
 // are conflicting with other instances of NVIDIADriver
 func (nsv *nodeSelectorValidator) Validate(ctx context.Context, cr *nvidiav1alpha1.NVIDIADriver) error {
+	if err := validateNVIDIADriverNodeSelector(cr); err != nil {
+		return err
+	}
+
 	drivers := &nvidiav1alpha1.NVIDIADriverList{}
 	err := nsv.client.List(ctx, drivers)
 	if err != nil {
 		return err
 	}
 
-	names := map[string]struct{}{}
+	selectedNodeOwners := map[string][]string{}
 	for di := range drivers.Items {
+		if err := validateNVIDIADriverNodeSelector(&drivers.Items[di]); err != nil {
+			return err
+		}
+		if isDefaultNVIDIADriver(&drivers.Items[di]) {
+			continue
+		}
+		driverName := drivers.Items[di].Name
 		nodeList, err := nsv.getNVIDIADriverSelectedNodes(ctx, &drivers.Items[di])
 		if err != nil {
 			return err
 		}
 
 		for ni := range nodeList.Items {
-			if _, ok := names[nodeList.Items[ni].Name]; ok {
-				return fmt.Errorf("conflicting NVIDIADriver NodeSelectors found for resource: %s, nodeSelector: %q", cr.Name, cr.Spec.NodeSelector)
+			nodeName := nodeList.Items[ni].Name
+			selectedNodeOwners[nodeName] = append(selectedNodeOwners[nodeName], driverName)
+			if len(selectedNodeOwners[nodeName]) > 1 {
+				sort.Strings(selectedNodeOwners[nodeName])
+				return fmt.Errorf("conflicting NVIDIADriver NodeSelectors found for node %s: %s", nodeName, strings.Join(selectedNodeOwners[nodeName], ", "))
 			}
-
-			names[nodeList.Items[ni].Name] = struct{}{}
 		}
 
 	}
 
 	return nil
+}
+
+// validateNVIDIADriverNodeSelector rejects selectors that use operator-managed routing labels.
+func validateNVIDIADriverNodeSelector(cr *nvidiav1alpha1.NVIDIADriver) error {
+	if cr == nil || cr.Spec.NodeSelector == nil {
+		return nil
+	}
+	if _, ok := cr.Spec.NodeSelector[consts.NVIDIADriverOwnerLabel]; ok {
+		return fmt.Errorf("NVIDIADriver %q nodeSelector cannot use reserved label %q", cr.Name, consts.NVIDIADriverOwnerLabel)
+	}
+	return nil
+}
+
+// isDefaultNVIDIADriver returns true when the NVIDIADriver is marked as the fallback driver.
+func isDefaultNVIDIADriver(cr *nvidiav1alpha1.NVIDIADriver) bool {
+	return cr != nil && cr.Labels[consts.DefaultNVIDIADriverLabel] == "true"
 }
 
 // getNVIDIADriverSelectedNodes returns selected nodes based on the nodeselector labels set for a given NVIDIADriver instance

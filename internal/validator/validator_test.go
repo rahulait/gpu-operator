@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
+	"github.com/NVIDIA/gpu-operator/internal/consts"
 )
 
 const (
@@ -70,6 +71,12 @@ func named(name string) driverOptions {
 func nodeSelector(labels map[string]string) driverOptions {
 	return func(c *nvidiav1alpha1.NVIDIADriver) {
 		c.Spec.NodeSelector = labels
+	}
+}
+
+func defaultDriver() driverOptions {
+	return func(c *nvidiav1alpha1.NVIDIADriver) {
+		c.Labels = map[string]string{consts.DefaultNVIDIADriverLabel: "true"}
 	}
 }
 
@@ -123,8 +130,77 @@ func TestCheckNodeSelector(t *testing.T) {
 		err = nsv.Validate(context.Background(), tc.requestedDriver)
 		if tc.shouldError {
 			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "conflicting NVIDIADriver NodeSelectors found for node my-test-node")
+			assert.Contains(t, err.Error(), "conflictingDriver")
+			assert.Contains(t, err.Error(), testDriverName)
 		} else {
 			assert.NoError(t, err)
 		}
 	}
+}
+
+func TestCheckNodeSelectorIgnoresDefaultDriver(t *testing.T) {
+	node := makeTestNode(labelled(map[string]string{
+		"nvidia.com/gpu.present": "true",
+		"nodepool":               "a",
+	}))
+	defaultDriver := makeTestDriver(defaultDriver())
+	requestedDriver := makeTestDriver(named("specificDriver"), nodeSelector(map[string]string{"nodepool": "a"}))
+
+	s := scheme.Scheme
+	err := nvidiav1alpha1.AddToScheme(s)
+	require.NoError(t, err)
+	c := fake.
+		NewClientBuilder().
+		WithScheme(s).
+		WithObjects(node, defaultDriver, requestedDriver).
+		Build()
+	nsv := NewNodeSelectorValidator(c)
+
+	err = nsv.Validate(context.Background(), requestedDriver)
+	assert.NoError(t, err)
+}
+
+func TestCheckNodeSelectorRejectsReservedOwnerLabel(t *testing.T) {
+	driver := makeTestDriver(nodeSelector(map[string]string{consts.NVIDIADriverOwnerLabel: "other-driver"}))
+
+	s := scheme.Scheme
+	err := nvidiav1alpha1.AddToScheme(s)
+	require.NoError(t, err)
+	c := fake.
+		NewClientBuilder().
+		WithScheme(s).
+		WithObjects(driver).
+		Build()
+	nsv := NewNodeSelectorValidator(c)
+
+	err = nsv.Validate(context.Background(), driver)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "reserved label")
+	assert.Contains(t, err.Error(), consts.NVIDIADriverOwnerLabel)
+}
+
+func TestCheckNodeSelectorDoesNotIgnoreDefaultNameWithoutLabel(t *testing.T) {
+	node := makeTestNode(labelled(map[string]string{
+		"nvidia.com/gpu.present": "true",
+		"nodepool":               "a",
+	}))
+	unlabeledDefaultNameDriver := makeTestDriver(named(consts.DefaultNVIDIADriverName), nodeSelector(map[string]string{"nodepool": "a"}))
+	requestedDriver := makeTestDriver(named("specificDriver"), nodeSelector(map[string]string{"nodepool": "a"}))
+
+	s := scheme.Scheme
+	err := nvidiav1alpha1.AddToScheme(s)
+	require.NoError(t, err)
+	c := fake.
+		NewClientBuilder().
+		WithScheme(s).
+		WithObjects(node, unlabeledDefaultNameDriver, requestedDriver).
+		Build()
+	nsv := NewNodeSelectorValidator(c)
+
+	err = nsv.Validate(context.Background(), requestedDriver)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "conflicting NVIDIADriver NodeSelectors found for node my-test-node")
+	assert.Contains(t, err.Error(), consts.DefaultNVIDIADriverName)
+	assert.Contains(t, err.Error(), "specificDriver")
 }

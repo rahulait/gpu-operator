@@ -603,6 +603,34 @@ func TestDriverOpenshiftDriverToolkit(t *testing.T) {
 	require.Equal(t, string(o), actual)
 }
 
+func TestGetNodePoolsDoesNotAllowSelectorToOverrideOwnerLabel(t *testing.T) {
+	require.NoError(t, corev1.AddToScheme(scheme.Scheme))
+
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "gpu-node",
+		Labels: map[string]string{
+			consts.GPUPresentLabel:        "true",
+			consts.NVIDIADriverOwnerLabel: "driver-a",
+			nfdOSReleaseIDLabelKey:        "ubuntu",
+			nfdOSVersionIDLabelKey:        "22.04",
+		},
+	}}
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(node).Build()
+
+	nodePools, err := getNodePools(
+		context.Background(),
+		k8sClient,
+		"driver-a",
+		map[string]string{consts.NVIDIADriverOwnerLabel: "driver-b"},
+		false,
+		false,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, nodePools, 1)
+	require.Equal(t, "driver-a", nodePools[0].nodeSelector[consts.NVIDIADriverOwnerLabel])
+}
+
 func TestDriverPrecompiled(t *testing.T) {
 	const (
 		testName = "driver-precompiled"
