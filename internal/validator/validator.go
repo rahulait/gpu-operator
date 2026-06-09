@@ -86,10 +86,14 @@ func (nsv *nodeSelectorValidator) Validate(ctx context.Context, cr *nvidiav1alph
 	return nil
 }
 
-// validateNVIDIADriverNodeSelector rejects selectors that use operator-managed routing labels.
+// validateNVIDIADriverNodeSelector rejects selectors that use operator-managed routing labels
+// or scope the default fallback driver.
 func validateNVIDIADriverNodeSelector(cr *nvidiav1alpha1.NVIDIADriver) error {
 	if cr == nil || cr.Spec.NodeSelector == nil {
 		return nil
+	}
+	if isDefaultNVIDIADriver(cr) && len(cr.Spec.NodeSelector) > 0 {
+		return fmt.Errorf("default NVIDIADriver %q cannot use nodeSelector", cr.Name)
 	}
 	if _, ok := cr.Spec.NodeSelector[consts.NVIDIADriverOwnerLabel]; ok {
 		return fmt.Errorf("NVIDIADriver %q nodeSelector cannot use reserved label %q", cr.Name, consts.NVIDIADriverOwnerLabel)
@@ -99,7 +103,7 @@ func validateNVIDIADriverNodeSelector(cr *nvidiav1alpha1.NVIDIADriver) error {
 
 // isDefaultNVIDIADriver returns true when the NVIDIADriver is marked as the fallback driver.
 func isDefaultNVIDIADriver(cr *nvidiav1alpha1.NVIDIADriver) bool {
-	return cr != nil && cr.Labels[consts.DefaultNVIDIADriverLabel] == "true"
+	return cr != nil && cr.Spec.Default
 }
 
 // getNVIDIADriverSelectedNodes returns selected nodes based on the nodeselector labels set for a given NVIDIADriver instance

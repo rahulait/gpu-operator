@@ -14,46 +14,44 @@ source ${SCRIPT_DIR}/checks.sh
 NVIDIA_DRIVER_NAME="${NVIDIA_DRIVER_NAME:-e2e-driver}"
 DEFAULT_NVIDIA_DRIVER_NAME="${DEFAULT_NVIDIA_DRIVER_NAME:-e2e-default-driver}"
 SECOND_DEFAULT_NVIDIA_DRIVER_NAME="${SECOND_DEFAULT_NVIDIA_DRIVER_NAME:-e2e-second-default-driver}"
-DEFAULT_NVIDIA_DRIVER_LABEL="nvidia.com/gpu-operator.default-driver"
 
 get_default_nvidiadriver_name() {
-    kubectl get nvidiadriver -l "${DEFAULT_NVIDIA_DRIVER_LABEL}=true" -o json |
-        jq -r '.items[0].metadata.name // empty'
+    kubectl get nvidiadriver -o json |
+        jq -r '.items[] | select(.spec.default == true) | .metadata.name' | head -n 1
 }
 
 get_default_nvidiadriver_count() {
-    kubectl get nvidiadriver -l "${DEFAULT_NVIDIA_DRIVER_LABEL}=true" -o json |
-        jq '.items | length'
+    kubectl get nvidiadriver -o json |
+        jq '[.items[] | select(.spec.default == true)] | length'
 }
 
 create_nvidiadriver_from() {
     local source_name=$1
     local target_name=$2
-    local default_label=${3:-false}
+    local default_driver=${3:-false}
 
-    kubectl get nvidiadriver/"${source_name}" -o json | jq --arg name "${target_name}" --arg default_label "${default_label}" --arg default_driver_label "${DEFAULT_NVIDIA_DRIVER_LABEL}" '
+    kubectl get nvidiadriver/"${source_name}" -o json | jq --arg name "${target_name}" --argjson default_driver "${default_driver}" '
         {
             apiVersion: .apiVersion,
             kind: .kind,
             metadata: {
-                name: $name,
-                labels: (if $default_label == "true" then {($default_driver_label): "true"} else {} end)
+                name: $name
             },
-            spec: .spec
+            spec: (.spec + {default: $default_driver})
         }
     ' | kubectl apply -f -
 }
 
-remove_default_label() {
+unset_default_driver() {
     local driver_name=$1
 
-    kubectl label nvidiadriver/"${driver_name}" "${DEFAULT_NVIDIA_DRIVER_LABEL}-" --overwrite
+    kubectl patch nvidiadriver/"${driver_name}" --type='merge' -p='{"spec":{"default":false}}'
 }
 
-restore_default_label() {
+set_default_driver() {
     local driver_name=$1
 
-    kubectl label nvidiadriver/"${driver_name}" "${DEFAULT_NVIDIA_DRIVER_LABEL}=true" --overwrite
+    kubectl patch nvidiadriver/"${driver_name}" --type='merge' -p='{"spec":{"default":true}}'
 }
 
 wait_for_default_nvidiadriver() {
@@ -71,7 +69,7 @@ wait_for_default_nvidiadriver() {
 
         if [[ "${current_time}" -gt 120 ]]; then
             echo "timeout reached waiting for NVIDIADriver/${expected_name} to be the only default"
-            kubectl get nvidiadriver --show-labels
+            kubectl get nvidiadriver
             exit 1
         fi
 
@@ -85,7 +83,7 @@ test_arbitrary_name_default_nvidiadriver() {
     current_default=$(get_default_nvidiadriver_name)
     if [[ -z "${current_default}" ]]; then
         echo "default NVIDIADriver not found"
-        kubectl get nvidiadriver --show-labels
+        kubectl get nvidiadriver
         exit 1
     fi
 
@@ -94,11 +92,11 @@ test_arbitrary_name_default_nvidiadriver() {
         return
     fi
 
-    echo "Moving default label from NVIDIADriver/${current_default} to NVIDIADriver/${DEFAULT_NVIDIA_DRIVER_NAME}"
-    remove_default_label "${current_default}"
+    echo "Moving default field from NVIDIADriver/${current_default} to NVIDIADriver/${DEFAULT_NVIDIA_DRIVER_NAME}"
+    unset_default_driver "${current_default}"
     if ! create_nvidiadriver_from "${current_default}" "${DEFAULT_NVIDIA_DRIVER_NAME}" true; then
-        echo "failed to create NVIDIADriver/${DEFAULT_NVIDIA_DRIVER_NAME}; restoring NVIDIADriver/${current_default} default label before failing"
-        restore_default_label "${current_default}"
+        echo "failed to create NVIDIADriver/${DEFAULT_NVIDIA_DRIVER_NAME}; restoring NVIDIADriver/${current_default} default field before failing"
+        set_default_driver "${current_default}"
         exit 1
     fi
     kubectl delete nvidiadriver/"${current_default}"
@@ -112,7 +110,7 @@ create_nvidiadriver() {
     default_name=$(get_default_nvidiadriver_name)
     if [[ -z "${default_name}" ]]; then
         echo "default NVIDIADriver not found"
-        kubectl get nvidiadriver --show-labels
+        kubectl get nvidiadriver
         exit 1
     fi
 
@@ -324,22 +322,22 @@ wait_for_clusterpolicy_condition_message() {
     done
 }
 
-test_removed_default_label_conflict_preserves_owners() {
-    echo "Testing that removing the default label makes the CR a normal conflicting NVIDIADriver"
-    remove_default_label "${DEFAULT_NVIDIA_DRIVER_NAME}"
+test_removed_default_field_conflict_preserves_owners() {
+    echo "Testing that clearing the default field makes the CR a normal conflicting NVIDIADriver"
+    unset_default_driver "${DEFAULT_NVIDIA_DRIVER_NAME}"
     wait_for_nvidiadriver_condition_message "${NVIDIA_DRIVER_NAME}" "conflicting NVIDIADriver NodeSelectors found"
     wait_for_nvidiadriver_condition_message "${DEFAULT_NVIDIA_DRIVER_NAME}" "conflicting NVIDIADriver NodeSelectors found"
     wait_for_clusterpolicy_condition_message "conflicting NVIDIADriver NodeSelectors found"
     assert_nvidiadriver_owner_count "${NVIDIA_DRIVER_NAME}"
-    restore_default_label "${DEFAULT_NVIDIA_DRIVER_NAME}"
+    set_default_driver "${DEFAULT_NVIDIA_DRIVER_NAME}"
     wait_for_default_nvidiadriver "${DEFAULT_NVIDIA_DRIVER_NAME}"
     wait_for_nvidiadriver_owner "${NVIDIA_DRIVER_NAME}"
 }
 
-test_multiple_default_labels() {
-    echo "Testing multiple default-labeled NVIDIADrivers"
+test_multiple_default_drivers() {
+    echo "Testing multiple default NVIDIADrivers"
     if ! create_nvidiadriver_from "${DEFAULT_NVIDIA_DRIVER_NAME}" "${SECOND_DEFAULT_NVIDIA_DRIVER_NAME}" true; then
-        echo "creation of second default-labeled NVIDIADriver was rejected"
+        echo "creation of second default NVIDIADriver was rejected"
         return
     fi
 
@@ -357,5 +355,5 @@ wait_for_nvidiadriver_daemonsets "${NVIDIA_DRIVER_NAME}"
 check_nvidia_driver_pods_ready
 test_driver_image_updates
 test_custom_labels_override
-test_removed_default_label_conflict_preserves_owners
-test_multiple_default_labels
+test_removed_default_field_conflict_preserves_owners
+test_multiple_default_drivers

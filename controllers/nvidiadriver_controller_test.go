@@ -40,7 +40,6 @@ import (
 
 	gpuv1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1"
 	nvidiav1alpha1 "github.com/NVIDIA/gpu-operator/api/nvidia/v1alpha1"
-	"github.com/NVIDIA/gpu-operator/internal/consts"
 	"github.com/NVIDIA/gpu-operator/internal/validator"
 )
 
@@ -335,28 +334,12 @@ func TestEnqueueAllNVIDIADrivers(t *testing.T) {
 	require.Equal(t, []string{"default/driver-a", "default/driver-b"}, got)
 }
 
-func TestNVIDIADriverGenerationOrDefaultLabelChangedPredicate(t *testing.T) {
-	p := nvidiaDriverGenerationOrDefaultLabelChangedPredicate()
+func TestNVIDIADriverGenerationChangedPredicate(t *testing.T) {
+	p := nvidiaDriverGenerationChangedPredicate()
 
 	require.True(t, p.Update(event.TypedUpdateEvent[*nvidiav1alpha1.NVIDIADriver]{
 		ObjectOld: &nvidiav1alpha1.NVIDIADriver{ObjectMeta: metav1.ObjectMeta{Name: "driver", Generation: 1}},
 		ObjectNew: &nvidiav1alpha1.NVIDIADriver{ObjectMeta: metav1.ObjectMeta{Name: "driver", Generation: 2}},
-	}))
-
-	require.True(t, p.Update(event.TypedUpdateEvent[*nvidiav1alpha1.NVIDIADriver]{
-		ObjectOld: &nvidiav1alpha1.NVIDIADriver{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       "driver",
-				Generation: 1,
-			},
-		},
-		ObjectNew: &nvidiav1alpha1.NVIDIADriver{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       "driver",
-				Generation: 1,
-				Labels:     map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-			},
-		},
 	}))
 
 	require.False(t, p.Update(event.TypedUpdateEvent[*nvidiav1alpha1.NVIDIADriver]{

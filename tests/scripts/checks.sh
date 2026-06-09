@@ -229,7 +229,7 @@ print_driver_upgrade_debug() {
 				| ($conditions[-1] // {}) as $latest
 				| [
 					.metadata.name,
-					(.metadata.labels["nvidia.com/gpu-operator.default-driver"] // "-"),
+					(if .spec.default == true then "true" else "-" end),
 					(.status.state // "-"),
 					($latest.reason // "-"),
 					($latest.message // "-")

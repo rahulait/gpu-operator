@@ -4,9 +4,8 @@ apiVersion: nvidia.com/v1alpha1
 kind: NVIDIADriver
 metadata:
   name: default
-  labels:
-    nvidia.com/gpu-operator.default-driver: "true"
 spec:
+  default: true
   repository: {{ .Values.driver.repository }}
   image: {{ .Values.driver.image }}
   version: {{ .Values.driver.version }}
@@ -18,9 +17,6 @@ spec:
   {{- end }}
   {{- if .Values.daemonsets.labels }}
   labels: {{ toYaml .Values.daemonsets.labels | nindent 6 }}
-  {{- end }}
-  {{- if .Values.driver.nvidiaDriverCRD.nodeSelector }}
-  nodeSelector: {{ toYaml .Values.driver.nvidiaDriverCRD.nodeSelector | nindent 6 }}
   {{- end }}
   {{- if .Values.driver.imagePullSecrets }}
   imagePullSecrets: {{ toYaml .Values.driver.imagePullSecrets | nindent 4 }}

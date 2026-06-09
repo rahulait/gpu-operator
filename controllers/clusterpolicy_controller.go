@@ -408,7 +408,7 @@ func (r *ClusterPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 				}
 				return requests
 			}),
-			nvidiaDriverGenerationOrDefaultLabelChangedPredicate(),
+			nvidiaDriverGenerationChangedPredicate(),
 		),
 	)
 	if err != nil {

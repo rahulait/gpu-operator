@@ -90,10 +90,8 @@ func TestAssignNVIDIADriverOwnersGivesSpecificDriversPrecedence(t *testing.T) {
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	defaultDriver := &nvidiav1alpha1.NVIDIADriver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   consts.DefaultNVIDIADriverName,
-			Labels: map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: consts.DefaultNVIDIADriverName},
+		Spec:       nvidiav1alpha1.NVIDIADriverSpec{Default: true},
 	}
 	specificDriver := &nvidiav1alpha1.NVIDIADriver{
 		ObjectMeta: metav1.ObjectMeta{Name: "h100-driver"},
@@ -150,16 +148,14 @@ func TestAssignNVIDIADriverOwnersAllowsMissingDefaultDriver(t *testing.T) {
 	require.Equal(t, "h100-driver", specificNode.Labels[consts.NVIDIADriverOwnerLabel])
 }
 
-func TestAssignNVIDIADriverOwnersUsesLabeledDefaultDriverWithArbitraryName(t *testing.T) {
+func TestAssignNVIDIADriverOwnersUsesDefaultDriverWithArbitraryName(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	defaultDriver := &nvidiav1alpha1.NVIDIADriver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "fallback-driver",
-			Labels: map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: "fallback-driver"},
+		Spec:       nvidiav1alpha1.NVIDIADriverSpec{Default: true},
 	}
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
 		Name:   "gpu-node",
@@ -180,16 +176,12 @@ func TestAssignNVIDIADriverOwnersErrorsOnMultipleDefaultDrivers(t *testing.T) {
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	defaultDriverA := &nvidiav1alpha1.NVIDIADriver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "fallback-a",
-			Labels: map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: "fallback-a"},
+		Spec:       nvidiav1alpha1.NVIDIADriverSpec{Default: true},
 	}
 	defaultDriverB := &nvidiav1alpha1.NVIDIADriver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "fallback-b",
-			Labels: map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: "fallback-b"},
+		Spec:       nvidiav1alpha1.NVIDIADriverSpec{Default: true},
 	}
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
 		Name:   "gpu-node",
@@ -236,17 +228,15 @@ func TestAssignNVIDIADriverOwnersRejectsReservedOwnerLabelSelector(t *testing.T)
 	require.Equal(t, "existing-driver", node.Labels[consts.NVIDIADriverOwnerLabel])
 }
 
-func TestAssignNVIDIADriverOwnersHonorsDefaultDriverNodeSelector(t *testing.T) {
+func TestAssignNVIDIADriverOwnersRejectsDefaultDriverNodeSelector(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, nvidiav1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	defaultDriver := &nvidiav1alpha1.NVIDIADriver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   consts.DefaultNVIDIADriverName,
-			Labels: map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: consts.DefaultNVIDIADriverName},
 		Spec: nvidiav1alpha1.NVIDIADriverSpec{
+			Default:      true,
 			NodeSelector: map[string]string{"driver-default": "true"},
 		},
 	}
@@ -271,14 +261,17 @@ func TestAssignNVIDIADriverOwnersHonorsDefaultDriverNodeSelector(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(defaultDriver, specificDriver, defaultNode, unmatchedNode, specificNode).Build()
 
-	require.NoError(t, assignNVIDIADriverOwners(context.Background(), k8sClient))
+	err := assignNVIDIADriverOwners(context.Background(), k8sClient)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "default NVIDIADriver")
+	require.Contains(t, err.Error(), "cannot use nodeSelector")
 
 	require.NoError(t, k8sClient.Get(context.Background(), client.ObjectKey{Name: "default-node"}, defaultNode))
 	require.NoError(t, k8sClient.Get(context.Background(), client.ObjectKey{Name: "unmatched-node"}, unmatchedNode))
 	require.NoError(t, k8sClient.Get(context.Background(), client.ObjectKey{Name: "specific-node"}, specificNode))
-	require.Equal(t, consts.DefaultNVIDIADriverName, defaultNode.Labels[consts.NVIDIADriverOwnerLabel])
-	require.NotContains(t, unmatchedNode.Labels, consts.NVIDIADriverOwnerLabel)
-	require.Equal(t, "h100-driver", specificNode.Labels[consts.NVIDIADriverOwnerLabel])
+	require.NotContains(t, defaultNode.Labels, consts.NVIDIADriverOwnerLabel)
+	require.Equal(t, consts.DefaultNVIDIADriverName, unmatchedNode.Labels[consts.NVIDIADriverOwnerLabel])
+	require.NotContains(t, specificNode.Labels, consts.NVIDIADriverOwnerLabel)
 }
 
 func TestAssignNVIDIADriverOwnersDoesNotFallbackToDefaultOnUserDriverConflict(t *testing.T) {
@@ -287,10 +280,8 @@ func TestAssignNVIDIADriverOwnersDoesNotFallbackToDefaultOnUserDriverConflict(t 
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	defaultDriver := &nvidiav1alpha1.NVIDIADriver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   consts.DefaultNVIDIADriverName,
-			Labels: map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: consts.DefaultNVIDIADriverName},
+		Spec:       nvidiav1alpha1.NVIDIADriverSpec{Default: true},
 	}
 	driverA := &nvidiav1alpha1.NVIDIADriver{
 		ObjectMeta: metav1.ObjectMeta{Name: "driver-a"},
@@ -329,10 +320,8 @@ func TestAssignNVIDIADriverOwnersDoesNotChangeOwnersWhenAnyUserDriverConflicts(t
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	defaultDriver := &nvidiav1alpha1.NVIDIADriver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   consts.DefaultNVIDIADriverName,
-			Labels: map[string]string{consts.DefaultNVIDIADriverLabel: "true"},
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: consts.DefaultNVIDIADriverName},
+		Spec:       nvidiav1alpha1.NVIDIADriverSpec{Default: true},
 	}
 	goldDriver := &nvidiav1alpha1.NVIDIADriver{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo-gold"},

@@ -31,7 +31,7 @@ import (
 
 // isDefaultNVIDIADriver returns true when the NVIDIADriver is marked as the fallback driver.
 func isDefaultNVIDIADriver(driver *nvidiav1alpha1.NVIDIADriver) bool {
-	return driver != nil && driver.Labels[consts.DefaultNVIDIADriverLabel] == "true"
+	return driver != nil && driver.Spec.Default
 }
 
 // nvidiaDriverCRDEnabled returns true when ClusterPolicy driver management is enabled through NVIDIADriver CRs.
@@ -41,10 +41,14 @@ func nvidiaDriverCRDEnabled(clusterPolicy *gpuv1.ClusterPolicy) bool {
 		clusterPolicy.Spec.Driver.UseNvidiaDriverCRDType()
 }
 
-// validateNVIDIADriverNodeSelector rejects selectors that use operator-managed routing labels.
+// validateNVIDIADriverNodeSelector rejects selectors that use operator-managed routing labels
+// or scope the default fallback driver.
 func validateNVIDIADriverNodeSelector(driver *nvidiav1alpha1.NVIDIADriver) error {
 	if driver == nil || driver.Spec.NodeSelector == nil {
 		return nil
+	}
+	if isDefaultNVIDIADriver(driver) && len(driver.Spec.NodeSelector) > 0 {
+		return fmt.Errorf("default NVIDIADriver %q cannot use nodeSelector", driver.Name)
 	}
 	if _, ok := driver.Spec.NodeSelector[consts.NVIDIADriverOwnerLabel]; ok {
 		return fmt.Errorf("NVIDIADriver %q nodeSelector cannot use reserved label %q", driver.Name, consts.NVIDIADriverOwnerLabel)

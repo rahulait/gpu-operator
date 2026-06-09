@@ -340,7 +340,7 @@ func (r *NVIDIADriverReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 		mgr.GetCache(),
 		&nvidiav1alpha1.NVIDIADriver{},
 		handler.TypedEnqueueRequestsFromMapFunc(nvidiaDriverMapFn),
-		nvidiaDriverGenerationOrDefaultLabelChangedPredicate(),
+		nvidiaDriverGenerationChangedPredicate(),
 	),
 	)
 	if err != nil {
@@ -438,9 +438,8 @@ func (r *NVIDIADriverReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 	return nil
 }
 
-// nvidiaDriverGenerationOrDefaultLabelChangedPredicate reconciles NVIDIADrivers on spec changes and
-// on changes to the default-driver label, which is metadata but affects ownership semantics.
-func nvidiaDriverGenerationOrDefaultLabelChangedPredicate() predicate.TypedPredicate[*nvidiav1alpha1.NVIDIADriver] {
+// nvidiaDriverGenerationChangedPredicate reconciles NVIDIADrivers on create, delete, and spec changes.
+func nvidiaDriverGenerationChangedPredicate() predicate.TypedPredicate[*nvidiav1alpha1.NVIDIADriver] {
 	return predicate.TypedFuncs[*nvidiav1alpha1.NVIDIADriver]{
 		CreateFunc: func(event.TypedCreateEvent[*nvidiav1alpha1.NVIDIADriver]) bool {
 			return true
@@ -455,9 +454,7 @@ func nvidiaDriverGenerationOrDefaultLabelChangedPredicate() predicate.TypedPredi
 			if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
 				return true
 			}
-			oldLabels := e.ObjectOld.GetLabels()
-			newLabels := e.ObjectNew.GetLabels()
-			return oldLabels[consts.DefaultNVIDIADriverLabel] != newLabels[consts.DefaultNVIDIADriverLabel]
+			return false
 		},
 		GenericFunc: func(event.TypedGenericEvent[*nvidiav1alpha1.NVIDIADriver]) bool {
 			return false

@@ -71,14 +71,14 @@ wait_for_default_nvidiadriver() {
 
     echo "Waiting for default NVIDIADriver to be rendered"
     while :; do
-        default_count=$(kubectl get nvidiadriver -l nvidia.com/gpu-operator.default-driver=true --no-headers 2>/dev/null | wc -l)
+        default_count=$(kubectl get nvidiadriver -o json 2>/dev/null | jq '[.items[] | select(.spec.default == true)] | length')
         if [[ "${default_count}" -eq 1 ]]; then
             break
         fi
 
         if [[ "${elapsed_time}" -gt 300 ]]; then
             echo "timeout reached waiting for default NVIDIADriver"
-            kubectl get nvidiadriver --show-labels || true
+            kubectl get nvidiadriver || true
             exit 1
         fi
 

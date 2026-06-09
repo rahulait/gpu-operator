@@ -12,7 +12,7 @@ test_nvidiadriver_helm_render_options() {
         --set driver.nvidiaDriverCRD.enabled=true \
         --set driver.nvidiaDriverCRD.deployDefaultCR=true > "${render_file}"
     grep -q "kind: NVIDIADriver" "${render_file}"
-    grep -q "nvidia.com/gpu-operator.default-driver: \"true\"" "${render_file}"
+    grep -q "default: true" "${render_file}"
 
     ${HELM} template gpu-operator "${PROJECT_DIR}/deployments/gpu-operator" \
         -n "${TEST_NAMESPACE}" \

@@ -67,8 +67,6 @@ const (
 
 	// DefaultNVIDIADriverName is the Helm-managed fallback NVIDIADriver.
 	DefaultNVIDIADriverName = "default"
-	// DefaultNVIDIADriverLabel marks the fallback NVIDIADriver.
-	DefaultNVIDIADriverLabel = "nvidia.com/gpu-operator.default-driver"
 	// NVIDIADriverOwnerLabel is an operator-managed node label used to route each GPU node to one NVIDIADriver.
 	NVIDIADriverOwnerLabel = "nvidia.com/gpu.driver.owner"
 

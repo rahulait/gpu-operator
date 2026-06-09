@@ -19,6 +19,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.default
+      name: Default
+      type: boolean
     - jsonPath: .status.state
       name: Status
       type: string
@@ -70,6 +73,11 @@ spec:
                   name:
                     type: string
                 type: object
+              default:
+                description: |-
+                  Default indicates that this NVIDIADriver acts as the fallback driver for GPU nodes
+                  that do not match any non-default NVIDIADriver nodeSelector.
+                type: boolean
               driverType:
                 default: gpu
                 description: DriverType defines NVIDIA driver type
@@ -971,6 +979,10 @@ spec:
             - driverType
             - image
             type: object
+            x-kubernetes-validations:
+            - message: default NVIDIADriver cannot use nodeSelector
+              rule: '!self.default || !has(self.nodeSelector) || size(self.nodeSelector)
+                == 0'
           status:
             description: NVIDIADriverStatus defines the observed state of NVIDIADriver
             properties:

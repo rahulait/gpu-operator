@@ -76,7 +76,7 @@ func nodeSelector(labels map[string]string) driverOptions {
 
 func defaultDriver() driverOptions {
 	return func(c *nvidiav1alpha1.NVIDIADriver) {
-		c.Labels = map[string]string{consts.DefaultNVIDIADriverLabel: "true"}
+		c.Spec.Default = true
 	}
 }
 
@@ -180,12 +180,31 @@ func TestCheckNodeSelectorRejectsReservedOwnerLabel(t *testing.T) {
 	assert.Contains(t, err.Error(), consts.NVIDIADriverOwnerLabel)
 }
 
-func TestCheckNodeSelectorDoesNotIgnoreDefaultNameWithoutLabel(t *testing.T) {
+func TestCheckNodeSelectorRejectsDefaultDriverNodeSelector(t *testing.T) {
+	driver := makeTestDriver(defaultDriver(), nodeSelector(map[string]string{"nodepool": "default"}))
+
+	s := scheme.Scheme
+	err := nvidiav1alpha1.AddToScheme(s)
+	require.NoError(t, err)
+	c := fake.
+		NewClientBuilder().
+		WithScheme(s).
+		WithObjects(driver).
+		Build()
+	nsv := NewNodeSelectorValidator(c)
+
+	err = nsv.Validate(context.Background(), driver)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "default NVIDIADriver")
+	assert.Contains(t, err.Error(), "cannot use nodeSelector")
+}
+
+func TestCheckNodeSelectorDoesNotIgnoreDefaultNameWithoutDefaultField(t *testing.T) {
 	node := makeTestNode(labelled(map[string]string{
 		"nvidia.com/gpu.present": "true",
 		"nodepool":               "a",
 	}))
-	unlabeledDefaultNameDriver := makeTestDriver(named(consts.DefaultNVIDIADriverName), nodeSelector(map[string]string{"nodepool": "a"}))
+	nonDefaultNameDriver := makeTestDriver(named(consts.DefaultNVIDIADriverName), nodeSelector(map[string]string{"nodepool": "a"}))
 	requestedDriver := makeTestDriver(named("specificDriver"), nodeSelector(map[string]string{"nodepool": "a"}))
 
 	s := scheme.Scheme
@@ -194,7 +213,7 @@ func TestCheckNodeSelectorDoesNotIgnoreDefaultNameWithoutLabel(t *testing.T) {
 	c := fake.
 		NewClientBuilder().
 		WithScheme(s).
-		WithObjects(node, unlabeledDefaultNameDriver, requestedDriver).
+		WithObjects(node, nonDefaultNameDriver, requestedDriver).
 		Build()
 	nsv := NewNodeSelectorValidator(c)
 
