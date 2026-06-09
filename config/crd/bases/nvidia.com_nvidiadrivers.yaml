@@ -51,7 +51,10 @@ spec:
           metadata:
             type: object
           spec:
-            description: NVIDIADriverSpec defines the desired state of NVIDIADriver
+            description: |-
+              NVIDIADriverSpec defines the desired state of NVIDIADriver.
+              The CEL validation allows non-default drivers to use nodeSelector, but requires
+              default drivers to leave nodeSelector unset or empty.
             properties:
               annotations:
                 additionalProperties:
@@ -74,6 +77,7 @@ spec:
                     type: string
                 type: object
               default:
+                default: false
                 description: |-
                   Default indicates that this NVIDIADriver acts as the fallback driver for GPU nodes
                   that do not match any non-default NVIDIADriver nodeSelector.
@@ -976,13 +980,14 @@ spec:
                     type: string
                 type: object
             required:
+            - default
             - driverType
             - image
             type: object
             x-kubernetes-validations:
             - message: default NVIDIADriver cannot use nodeSelector
-              rule: '!self.default || !has(self.nodeSelector) || size(self.nodeSelector)
-                == 0'
+              rule: 'has(self.default) && self.default ? !has(self.nodeSelector) ||
+                size(self.nodeSelector) == 0 : true'
           status:
             description: NVIDIADriverStatus defines the observed state of NVIDIADriver
             properties:

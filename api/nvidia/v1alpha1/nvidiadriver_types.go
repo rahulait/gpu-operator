@@ -39,14 +39,15 @@ const (
 // NVIDIADriverSpec defines the desired state of NVIDIADriver.
 // The CEL validation allows non-default drivers to use nodeSelector, but requires
 // default drivers to leave nodeSelector unset or empty.
-// +kubebuilder:validation:XValidation:rule="!self.default || !has(self.nodeSelector) || size(self.nodeSelector) == 0",message="default NVIDIADriver cannot use nodeSelector"
+// +kubebuilder:validation:XValidation:rule="has(self.default) && self.default ? !has(self.nodeSelector) || size(self.nodeSelector) == 0 : true",message="default NVIDIADriver cannot use nodeSelector"
 type NVIDIADriverSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Default indicates that this NVIDIADriver acts as the fallback driver for GPU nodes
 	// that do not match any non-default NVIDIADriver nodeSelector.
-	Default bool `json:"default,omitempty"`
+	// +kubebuilder:default=false
+	Default bool `json:"default"`
 
 	// +kubebuilder:validation:Enum=gpu;vgpu;vgpu-host-manager
 	// +kubebuilder:default=gpu
