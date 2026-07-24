@@ -280,6 +280,8 @@ spec:
       image: nvcr.io/nvidia/cloud-native/nvidia-sandbox-device-plugin:v0.0.3@sha256:a897db2f25b1b0ff6195726ba6c307d8567b2285f59cde5f8409683fd9bd12e5
     - name: vgpu-device-manager-image
       image: nvcr.io/nvidia/cloud-native/vgpu-device-manager:v0.4.2@sha256:24892b0ee0ca924d3c644648e9f0e0fa80d238e2fb681b21913f32fd0af9cde7
+    - name: gds-driver-image
+      image: nvcr.io/nvidia/cloud-native/nvidia-fs@sha256:14dcf20d540acd176e7a9fefbaf7972e36d8856fd1bc3af40416c09d5ad5fd3d
     - name: gdrcopy-image
       image: nvcr.io/nvidia/cloud-native/gdrdrv@sha256:eef1b6663d78555f0e5c49c156196b67e8a3008bc22aaa02b03dad53887ee0f1
   customresourcedefinitions:
