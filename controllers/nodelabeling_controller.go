@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/NVIDIA/k8s-operator-libs/pkg/upgrade"
@@ -690,21 +691,30 @@ func (r *NodeLabelingReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 			reasons := getNodeLabelUpdateReasons(oldLabels, newLabels)
 			needsUpdate := reasons.needsUpdate()
 
-			// When an NVIDIADriver daemonset pod is running on the node, check if any
-			// label which is configured in the NVIDIADriver's node selector has changed.
+			// A node can enter another driver's pool even when its current owner is
+			// the default driver or it has no owner, so inspect every live selector.
 			nvidiaDriverNodeSelectorLabelChanged := false
-			if !needsUpdate && newLabels[consts.NVIDIADriverOwnerLabel] != "" {
-				name := newLabels[consts.NVIDIADriverOwnerLabel]
-				nvidiaDriver := &nvidiav1alpha1.NVIDIADriver{}
-				err := r.Get(ctx, types.NamespacedName{Name: name}, nvidiaDriver)
-				if err != nil {
-					r.Log.Error(err, "failed to get NVIDIADriver object that owns this node", "name", name, "node", nodeName)
-					return false
+			if !needsUpdate && !maps.Equal(oldLabels, newLabels) {
+				drivers := &nvidiav1alpha1.NVIDIADriverList{}
+				if err := r.List(ctx, drivers); err != nil {
+					r.Log.Error(err, "failed to list NVIDIADrivers for node label update", "node", nodeName)
+					// Enqueue reconciliation so a transient cache error cannot drop the update.
+					return true
 				}
-				for key := range nvidiaDriver.Spec.NodeSelector {
-					if oldLabels[key] != newLabels[key] {
-						nvidiaDriverNodeSelectorLabelChanged = true
-						needsUpdate = true
+				for _, driver := range drivers.Items {
+					if driver.HasDeletionTimestamp() {
+						continue
+					}
+					for key := range driver.Spec.NodeSelector {
+						oldValue, oldPresent := oldLabels[key]
+						newValue, newPresent := newLabels[key]
+						if oldValue != newValue || oldPresent != newPresent {
+							nvidiaDriverNodeSelectorLabelChanged = true
+							needsUpdate = true
+							break
+						}
+					}
+					if needsUpdate {
 						break
 					}
 				}
