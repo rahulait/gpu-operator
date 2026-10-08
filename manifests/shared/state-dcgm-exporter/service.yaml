@@ -1,16 +1,20 @@
 apiVersion: v1
 kind: Service
 metadata:
-  namespace: "FILLED BY THE OPERATOR"
   name: nvidia-dcgm-exporter
+  namespace: {{ .Namespace }}
   labels:
     app: nvidia-dcgm-exporter
     app.kubernetes.io/component: nvidia-dcgm-exporter
   annotations:
     prometheus.io/scrape: "true"
 spec:
+  type: {{ .ServiceType }}
+  {{- if .ServiceInternalTrafficPolicy }}
+  internalTrafficPolicy: {{ .ServiceInternalTrafficPolicy }}
+  {{- end }}
   selector:
-    app: nvidia-dcgm-exporter
+    app.kubernetes.io/component: nvidia-dcgm-exporter
   ports:
   - name: gpu-metrics
     port: 9400

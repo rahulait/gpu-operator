@@ -43,6 +43,13 @@ spec:
         {{- end }}
       {{- end }}
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: nvidia-dcgm-exporter
+              topologyKey: kubernetes.io/hostname
       priorityClassName: system-node-critical
       serviceAccountName: nvidia-dcgm-exporter-dra
       automountServiceAccountToken: true

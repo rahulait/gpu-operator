@@ -5163,18 +5163,15 @@ func TestHashDriverInstallConfigZeroFieldInvariant(t *testing.T) {
 func TestOperandComponentLabels(t *testing.T) {
 	cases := map[string]struct {
 		daemonset string
-		service   string
 	}{
 		"nvidia-driver": {
 			daemonset: "../assets/state-driver/0500_daemonset.yaml",
 		},
 		"nvidia-dcgm": {
 			daemonset: "../assets/state-dcgm/0400_dcgm.yml",
-			service:   "../assets/state-dcgm/0500_service.yaml",
 		},
 		"nvidia-dcgm-exporter": {
 			daemonset: "../assets/state-dcgm-exporter/0800_daemonset.yaml",
-			service:   "../assets/state-dcgm-exporter/0400_service.yaml",
 		},
 	}
 	for component, tc := range cases {
@@ -5199,17 +5196,13 @@ func TestOperandComponentLabels(t *testing.T) {
 					assert.Equal(t, "platform", actual.Spec.Template.Labels["team"])
 				}
 			}
-			if tc.service == "" {
-				return
+			if component == "nvidia-dcgm" || component == "nvidia-dcgm-exporter" {
+				terms := ds.Spec.Template.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+				require.Len(t, terms, 1)
+				assert.Equal(t, "kubernetes.io/hostname", terms[0].TopologyKey)
+				assert.Equal(t, component, terms[0].LabelSelector.MatchLabels["app.kubernetes.io/component"])
 			}
-			data, err = os.ReadFile(tc.service)
-			require.NoError(t, err)
-			svc := &corev1.Service{}
-			require.NoError(t, yaml.Unmarshal(data, svc))
-			assert.Equal(t, component, svc.Labels["app.kubernetes.io/component"])
-			assert.Equal(t, component, svc.Labels["app"])
-			assert.Equal(t, component, svc.Name)
-			assert.Equal(t, map[string]string{"app": component}, svc.Spec.Selector)
+
 		})
 	}
 }

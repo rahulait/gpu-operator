@@ -450,3 +450,17 @@ func TestDeleteStateRelatedObjectsMappingErrorPropagates(t *testing.T) {
 	_, err := skel.deleteStateRelatedObjects(context.Background())
 	require.ErrorContains(t, err, "injected mapping error")
 }
+
+func TestStateCleanupPreservesSharedServices(t *testing.T) {
+	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
+		Name: "nvidia-dcgm", Namespace: "test-ns",
+		Labels: map[string]string{consts.StateLabel: "test-state"},
+	}}
+	skel, c := newDeletionSkel(t, svc)
+	mapper := c.RESTMapper().(*meta.DefaultRESTMapper)
+	mapper.Add(schema.GroupVersionKind{Version: "v1", Kind: "Service"}, meta.RESTScopeNamespace)
+	found, err := skel.deleteStateRelatedObjects(context.Background())
+	require.NoError(t, err)
+	assert.False(t, found, "shared Services must not keep disabled stack cleanup pending")
+	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(svc), &corev1.Service{}))
+}

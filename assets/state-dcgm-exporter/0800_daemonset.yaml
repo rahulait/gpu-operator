@@ -18,6 +18,13 @@ spec:
         app: nvidia-dcgm-exporter
         app.kubernetes.io/component: nvidia-dcgm-exporter
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: nvidia-dcgm-exporter
+              topologyKey: kubernetes.io/hostname
       nodeSelector:
         nvidia.com/gpu.deploy.dcgm-exporter: "true"
       tolerations:

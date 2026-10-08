@@ -97,20 +97,18 @@ type dcgmExporterRenderData struct {
 	// on vanilla Kubernetes.
 	OpenshiftVersion string
 	// ResourceClaimAPIVersion is the apiVersion to render on ResourceClaimTemplate objects.
-	ResourceClaimAPIVersion      string
-	RemoteHostEngine             string
-	Collectors                   string
-	HPCJobMappingDir             string
-	PodLabelAllowlistRegex       string
-	EnablePodLabels              bool
-	EnablePodUID                 bool
-	HostPID                      bool
-	HostNetwork                  bool
-	MetricsConfigName            string
-	ServiceMonitorEnabled        bool
-	PodResourcesDir              string
-	ServiceType                  string
-	ServiceInternalTrafficPolicy string
+	ResourceClaimAPIVersion string
+	RemoteHostEngine        string
+	Collectors              string
+	HPCJobMappingDir        string
+	PodLabelAllowlistRegex  string
+	EnablePodLabels         bool
+	EnablePodUID            bool
+	HostPID                 bool
+	HostNetwork             bool
+	MetricsConfigName       string
+	ServiceMonitorEnabled   bool
+	PodResourcesDir         string
 }
 
 // validatorRenderData is the templating data for the DRA validator manifests. It

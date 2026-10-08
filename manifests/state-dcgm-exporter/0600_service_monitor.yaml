@@ -16,7 +16,7 @@ spec:
     - {{ .Namespace }}
   selector:
     matchLabels:
-      app: nvidia-dcgm-exporter-dra
+      app: nvidia-dcgm-exporter
   endpoints:
   - port: gpu-metrics
     path: /metrics

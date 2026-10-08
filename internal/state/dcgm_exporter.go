@@ -35,9 +35,9 @@ const (
 	// CR does not specify repository/image/version.
 	dcgmExporterImageEnvName = "DCGM_EXPORTER_IMAGE"
 
-	// dcgmRemoteHostEngine points dcgm-exporter at the standalone nvidia-dcgm-dra
-	// hostengine Service (manifests/state-dcgm/0600_service.yaml).
-	dcgmRemoteHostEngine = "nvidia-dcgm-dra:5555"
+	// dcgmRemoteHostEngine points dcgm-exporter at the shared standalone nvidia-dcgm
+	// hostengine Service (manifests/shared/state-dcgm/service.yaml).
+	dcgmRemoteHostEngine = "nvidia-dcgm:5555"
 
 	dcgmExporterDefaultCollectors     = "/etc/dcgm-exporter/dcp-metrics-included.csv"
 	dcgmExporterCustomCollectors      = "/etc/dcgm-exporter/dcgm-metrics.csv"
@@ -109,37 +109,24 @@ func buildDCGMExporterRenderData(ctx context.Context, s *configurableState, cr *
 		serviceMonitorEnabled = false
 	}
 
-	serviceType := "ClusterIP"
-	serviceInternalTrafficPolicy := ""
-	if spec.ServiceSpec != nil {
-		if spec.ServiceSpec.Type != "" {
-			serviceType = string(spec.ServiceSpec.Type)
-		}
-		if spec.ServiceSpec.InternalTrafficPolicy != nil {
-			serviceInternalTrafficPolicy = string(*spec.ServiceSpec.InternalTrafficPolicy)
-		}
-	}
-
 	daemonsets := cr.Spec.Daemonsets
 	return &dcgmExporterRenderData{
-		DCGMExporter:                 &dcgmExporterSpec{Spec: spec, ImagePath: imagePath},
-		Daemonsets:                   &daemonsets,
-		Namespace:                    s.namespace,
-		OpenshiftVersion:             openshiftVersion,
-		ResourceClaimAPIVersion:      apiVersion,
-		RemoteHostEngine:             remoteHostEngine,
-		Collectors:                   collectors,
-		HPCJobMappingDir:             hpcJobMappingDir,
-		PodLabelAllowlistRegex:       strings.Join(spec.PodLabelAllowlistRegex, ","),
-		EnablePodLabels:              spec.IsPodLabelsEnabled(),
-		EnablePodUID:                 spec.IsPodUIDEnabled(),
-		HostPID:                      spec.IsHostPIDEnabled(),
-		HostNetwork:                  spec.IsHostNetworkEnabled(),
-		MetricsConfigName:            metricsConfigName,
-		ServiceMonitorEnabled:        serviceMonitorEnabled,
-		PodResourcesDir:              filepath.Join(kubeletRootDir, "pod-resources"),
-		ServiceType:                  serviceType,
-		ServiceInternalTrafficPolicy: serviceInternalTrafficPolicy,
+		DCGMExporter:            &dcgmExporterSpec{Spec: spec, ImagePath: imagePath},
+		Daemonsets:              &daemonsets,
+		Namespace:               s.namespace,
+		OpenshiftVersion:        openshiftVersion,
+		ResourceClaimAPIVersion: apiVersion,
+		RemoteHostEngine:        remoteHostEngine,
+		Collectors:              collectors,
+		HPCJobMappingDir:        hpcJobMappingDir,
+		PodLabelAllowlistRegex:  strings.Join(spec.PodLabelAllowlistRegex, ","),
+		EnablePodLabels:         spec.IsPodLabelsEnabled(),
+		EnablePodUID:            spec.IsPodUIDEnabled(),
+		HostPID:                 spec.IsHostPIDEnabled(),
+		HostNetwork:             spec.IsHostNetworkEnabled(),
+		MetricsConfigName:       metricsConfigName,
+		ServiceMonitorEnabled:   serviceMonitorEnabled,
+		PodResourcesDir:         filepath.Join(kubeletRootDir, "pod-resources"),
 	}, nil
 }
 
