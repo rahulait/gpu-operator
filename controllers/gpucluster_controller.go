@@ -36,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
@@ -64,6 +63,7 @@ type GPUClusterReconciler struct {
 	Namespace   string
 
 	stateManager     state.Manager
+	sharedServices   *SharedServices
 	conditionUpdater conditions.Updater
 	recorder         events.EventRecorder
 }
@@ -78,14 +78,18 @@ type GPUClusterReconciler struct {
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=use,resourceNames=anyuid
 
 func (r *GPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if r.sharedServices == nil {
+		r.sharedServices = newSharedServices(r.Client, r.Scheme, r.Namespace)
+	}
+
 	logger := log.FromContext(ctx)
 	logger.V(consts.LogLevelInfo).Info("Reconciling GPUCluster")
 
 	instance := &nvidiav1alpha1.GPUCluster{}
 	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
 		if apierrors.IsNotFound(err) {
-			// Deleted; owned objects are garbage-collected, so there is nothing to clean up.
-			return ctrl.Result{}, nil
+			// Recompute shared endpoints after deletion; the other stack may still need them.
+			return ctrl.Result{}, r.sharedServices.reconcile(ctx)
 		}
 		// instance was not populated by the failed Get, so there is no object to
 		// update status on; just surface the error for requeue.
@@ -94,6 +98,9 @@ func (r *GPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if !instance.DeletionTimestamp.IsZero() {
+		if err := r.sharedServices.reconcile(ctx); err != nil {
+			return ctrl.Result{}, err
+		}
 		return r.reconcileDelete(ctx, instance)
 	}
 
@@ -112,6 +119,16 @@ func (r *GPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			logger.Error(condErr, "failed to set condition")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
+	if err := r.sharedServices.reconcile(ctx); err != nil {
+		if statusErr := r.updateCRStatus(ctx, instance, nvidiav1alpha1.NotReady); statusErr != nil {
+			return ctrl.Result{}, statusErr
+		}
+		if condErr := r.conditionUpdater.SetConditionsError(ctx, instance, conditions.ReconcileFailed, err.Error()); condErr != nil {
+			logger.Error(condErr, "failed to set condition")
+		}
+		return ctrl.Result{}, err
 	}
 
 	// The operand states render ResourceClaimTemplates with adminAccess: true, which the
@@ -152,7 +169,8 @@ func (r *GPUClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	// Resync periodically so out-of-band changes (a deleted DeviceClass/VAP, or a
 	// newly-created ClusterPolicy) are detected and reconciled even while ready;
-	// only DaemonSets are watched, and the ready path is otherwise event-driven.
+	// Shared Service and DaemonSet watches handle drift; periodic reconciliation
+	// also recovers from changes during CR/Service ownership handoff.
 	return ctrl.Result{RequeueAfter: time.Minute}, nil
 }
 
@@ -303,6 +321,9 @@ func (r *GPUClusterReconciler) enqueueAllGPUClusters(ctx context.Context, _ *nvi
 }
 
 func (r *GPUClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	r.sharedServices = newSharedServices(mgr.GetClient(), mgr.GetScheme(), r.Namespace)
+	r.sharedServices.Reader = mgr.GetAPIReader()
+
 	// The state manager renders the DRA driver operand for the GPUCluster.
 	stateManager, err := state.NewManager(
 		nvidiav1alpha1.GPUClusterCRDName,
@@ -330,10 +351,19 @@ func (r *GPUClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Ma
 		mgr.GetCache(),
 		&nvidiav1alpha1.GPUCluster{},
 		handler.TypedEnqueueRequestsFromMapFunc(r.enqueueAllGPUClusters),
-		predicate.TypedGenerationChangedPredicate[*nvidiav1alpha1.GPUCluster]{},
+		sharedServiceCRPredicate[*nvidiav1alpha1.GPUCluster](),
 	),
 	)
 	if err != nil {
+		return err
+	}
+
+	if err := watchSharedServices(mgr, c, r.Namespace, func(ctx context.Context) []reconcile.Request { return r.enqueueAllGPUClusters(ctx, nil) }); err != nil {
+		return err
+	}
+	if err := c.Watch(source.Kind(mgr.GetCache(), &gpuv1.ClusterPolicy{}, handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, _ *gpuv1.ClusterPolicy) []reconcile.Request {
+		return r.enqueueAllGPUClusters(ctx, nil)
+	}), sharedServiceCRPredicate[*gpuv1.ClusterPolicy]())); err != nil {
 		return err
 	}
 

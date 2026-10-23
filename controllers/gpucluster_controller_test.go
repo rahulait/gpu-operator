@@ -60,6 +60,7 @@ func newGPUClusterReconciler(t *testing.T, objs ...client.Object) (*GPUClusterRe
 
 	return &GPUClusterReconciler{
 		Client:           c,
+		sharedServices:   &SharedServices{Client: c, Scheme: scheme, Namespace: "test-namespace", ManifestDir: "../manifests/shared"},
 		Scheme:           scheme,
 		Namespace:        "test-namespace",
 		stateManager:     &fakeStateManager{results: state.Results{Status: state.SyncStateReady}},
@@ -300,4 +301,27 @@ func TestEnqueueAllGPUClusters(t *testing.T) {
 	got := []string{requests[0].String(), requests[1].String()}
 	sort.Strings(got)
 	require.Equal(t, []string{"/config-a", "/config-b"}, got)
+}
+
+func TestGPUClusterReconcileSharedServiceLifecycle(t *testing.T) {
+	ctx := context.Background()
+	_, gc := sharedServicesTestCRs()
+	r, c := newGPUClusterReconciler(t, gc)
+	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(gc)})
+	require.NoError(t, err)
+	for _, name := range sharedServiceNames {
+		svc := &corev1.Service{}
+		require.NoError(t, c.Get(ctx, client.ObjectKey{Namespace: r.Namespace, Name: name}, svc))
+		require.Equal(t, map[string]string{AppComponentLabelKey: name}, svc.Spec.Selector)
+	}
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(gc), gc))
+	disabled := false
+	gc.Spec.DCGM.Enabled = &disabled
+	gc.Spec.DCGMExporter.Enabled = &disabled
+	require.NoError(t, c.Update(ctx, gc))
+	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(gc)})
+	require.NoError(t, err)
+	for _, name := range sharedServiceNames {
+		require.True(t, apierrors.IsNotFound(c.Get(ctx, client.ObjectKey{Namespace: r.Namespace, Name: name}, &corev1.Service{})))
+	}
 }

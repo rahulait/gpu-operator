@@ -416,10 +416,12 @@ func (s *stateSkel) deleteStateRelatedObjects(ctx context.Context) (bool, error)
 			}
 			return false, err
 		}
-		if len(l.Items) > 0 {
-			found = true
-		}
 		for _, obj := range l.Items {
+			// Shared endpoints are released only after checking both stacks.
+			if obj.GetKind() == "Service" && (obj.GetName() == "nvidia-dcgm" || obj.GetName() == "nvidia-dcgm-exporter") {
+				continue
+			}
+			found = true
 			if obj.GetDeletionTimestamp() == nil {
 				err := s.client.Delete(ctx, &obj)
 				if err != nil && !apierrors.IsNotFound(err) {

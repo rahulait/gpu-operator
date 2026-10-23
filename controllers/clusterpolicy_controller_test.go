@@ -26,6 +26,7 @@ import (
 	promcli "github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -482,7 +483,7 @@ func newClusterPolicyUpgradeTestReconciler(t *testing.T, cp *gpuv1.ClusterPolicy
 	}
 	t.Cleanup(func() { clusterPolicyCtrl = previousController })
 
-	return &ClusterPolicyReconciler{Client: c, Scheme: scheme, Log: logr.Discard(), conditionUpdater: &FakeConditionUpdater{}}, c, metrics
+	return &ClusterPolicyReconciler{Client: c, Scheme: scheme, Log: logr.Discard(), conditionUpdater: &FakeConditionUpdater{}, sharedServices: &SharedServices{Client: c, Scheme: scheme, ManifestDir: "../manifests/shared"}}, c, metrics
 }
 
 func newClusterPolicyUpgradeTestMetrics() *OperatorMetrics {
@@ -513,4 +514,27 @@ func clusterPolicyState(t *testing.T, c client.Client, name string) gpuv1.State 
 	cp := &gpuv1.ClusterPolicy{}
 	require.NoError(t, c.Get(t.Context(), client.ObjectKey{Name: name}, cp))
 	return cp.Status.State
+}
+
+func TestClusterPolicyReconcileSharedServiceLifecycle(t *testing.T) {
+	ctx := context.Background()
+	cp := clusterPolicyForUpgradeTest(true)
+	r, c, _ := newClusterPolicyUpgradeTestReconciler(t, cp)
+	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(cp)})
+	require.NoError(t, err)
+	for _, name := range sharedServiceNames {
+		svc := &corev1.Service{}
+		require.NoError(t, c.Get(ctx, client.ObjectKey{Name: name}, svc))
+		require.Equal(t, map[string]string{AppComponentLabelKey: name}, svc.Spec.Selector)
+	}
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(cp), cp))
+	disabled := false
+	cp.Spec.DCGM.Enabled = &disabled
+	cp.Spec.DCGMExporter.Enabled = &disabled
+	require.NoError(t, c.Update(ctx, cp))
+	_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(cp)})
+	require.NoError(t, err)
+	for _, name := range sharedServiceNames {
+		require.True(t, apierrors.IsNotFound(c.Get(ctx, client.ObjectKey{Name: name}, &corev1.Service{})))
+	}
 }

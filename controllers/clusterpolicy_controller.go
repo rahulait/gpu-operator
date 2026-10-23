@@ -67,6 +67,7 @@ type ClusterPolicyReconciler struct {
 	Scheme           *runtime.Scheme
 	Namespace        string
 	OperatorMetrics  *OperatorMetrics
+	sharedServices   *SharedServices
 	conditionUpdater conditions.Updater
 }
 
@@ -97,6 +98,10 @@ type ClusterPolicyReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if r.sharedServices == nil {
+		r.sharedServices = newSharedServices(r.Client, r.Scheme, r.Namespace)
+	}
+
 	_ = r.Log.WithValues("Reconciling ClusterPolicy", req.NamespacedName)
 
 	// Fetch the ClusterPolicy instance
@@ -106,10 +111,9 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		r.Log.Error(err, "unable to fetch ClusterPolicy")
 		clusterPolicyCtrl.operatorMetrics.reconciliationStatus.Set(reconciliationStatusClusterPolicyUnavailable)
 		if apierrors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
-			return reconcile.Result{}, nil
+			// Shared endpoints may still be needed by the other stack, so
+			// recompute their lifecycle instead of relying solely on GC.
+			return reconcile.Result{}, r.sharedServices.reconcile(ctx)
 		}
 		// Error reading the object - requeue the request.
 		if condErr := r.conditionUpdater.SetConditionsError(ctx, instance, conditions.ReconcileFailed, err.Error()); condErr != nil {
@@ -130,6 +134,10 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		// do not change `clusterPolicyCtrl.operatorMetrics.reconciliationStatus` here,
 		// spurious reconciliation
 		return ctrl.Result{}, nil
+	}
+
+	if !instance.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, r.sharedServices.reconcile(ctx)
 	}
 
 	// TODO: remove the below code block once both ClusterPolicy and GPUCluster can co-exist
@@ -155,6 +163,14 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			r.Log.Error(condErr, "failed to set condition")
 		}
 		clusterPolicyCtrl.operatorMetrics.reconciliationStatus.Set(reconciliationStatusClusterPolicyUnavailable)
+		return ctrl.Result{}, err
+	}
+
+	if err := r.sharedServices.reconcile(ctx); err != nil {
+		updateCRState(ctx, r, req.NamespacedName, gpuv1.NotReady)
+		if condErr := r.conditionUpdater.SetConditionsError(ctx, instance, conditions.ReconcileFailed, err.Error()); condErr != nil {
+			r.Log.Error(condErr, "failed to set condition")
+		}
 		return ctrl.Result{}, err
 	}
 
@@ -279,7 +295,8 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, condErr
 		}
 	}
-	return ctrl.Result{}, nil
+	// Recover from CR changes between shared Service reads and writes.
+	return ctrl.Result{RequeueAfter: time.Minute}, nil
 }
 
 // clusterPolicyNotReadyMessage formats a condition message with operand states and additional not-ready reasons.
@@ -452,6 +469,9 @@ func shouldReconcileClusterPolicyOnNodeDeletion(labels map[string]string) bool {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	r.sharedServices = newSharedServices(mgr.GetClient(), mgr.GetScheme(), r.Namespace)
+	r.sharedServices.Reader = mgr.GetAPIReader()
+
 	// Create a new controller
 	c, err := controller.New("clusterpolicy-controller", mgr, controller.Options{Reconciler: r, MaxConcurrentReconciles: 1,
 		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](minDelayCR, maxDelayCR)})
@@ -469,7 +489,7 @@ func (r *ClusterPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 		mgr.GetCache(),
 		&gpuv1.ClusterPolicy{},
 		&handler.TypedEnqueueRequestForObject[*gpuv1.ClusterPolicy]{},
-		predicate.TypedGenerationChangedPredicate[*gpuv1.ClusterPolicy]{},
+		sharedServiceCRPredicate[*gpuv1.ClusterPolicy](),
 	),
 	)
 	if err != nil {
@@ -503,9 +523,13 @@ func (r *ClusterPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 		mgr.GetCache(),
 		&nvidiav1alpha1.GPUCluster{},
 		handler.TypedEnqueueRequestsFromMapFunc(gpuClusterMapFn),
-		predicate.TypedGenerationChangedPredicate[*nvidiav1alpha1.GPUCluster]{},
+		sharedServiceCRPredicate[*nvidiav1alpha1.GPUCluster](),
 	))
 	if err != nil {
+		return err
+	}
+
+	if err := watchSharedServices(mgr, c, r.Namespace, r.enqueueAllClusterPolicies); err != nil {
 		return err
 	}
 

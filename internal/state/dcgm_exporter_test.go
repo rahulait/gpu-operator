@@ -22,12 +22,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -81,7 +79,7 @@ func TestDCGMExporterEnabledByDefault(t *testing.T) {
 	assert.Equal(t, 1, kinds["RoleBinding"])
 	assert.Equal(t, 1, kinds["ResourceClaimTemplate"])
 	assert.Equal(t, 1, kinds["DaemonSet"])
-	assert.Equal(t, 1, kinds["Service"])
+	assert.Equal(t, 0, kinds["Service"])
 	// DRA attribution needs the ResourceSlice informer, so the read ClusterRole is
 	// always bound. No ServiceMonitor by default.
 	assert.Equal(t, 1, kinds["ClusterRole"])
@@ -132,7 +130,7 @@ func TestDCGMExporterRemoteEngineWhenDCGMEnabled(t *testing.T) {
 
 	ds := findDaemonSet(t, objs)
 	env := envMap(ds.Spec.Template.Spec.Containers[0].Env)
-	assert.Equal(t, "nvidia-dcgm-dra:5555", env["DCGM_REMOTE_HOSTENGINE_INFO"])
+	assert.Equal(t, "nvidia-dcgm:5555", env["DCGM_REMOTE_HOSTENGINE_INFO"])
 }
 
 func TestDCGMExporterPodMetadataEnrichment(t *testing.T) {
@@ -258,24 +256,4 @@ func TestDCGMExporterServiceMonitorRelabelings(t *testing.T) {
 	require.True(t, ok, "metricRelabelings must be rendered")
 	require.Len(t, metricRelabelings, 1)
 	assert.Equal(t, "namespace", metricRelabelings[0].(map[string]any)["targetLabel"])
-}
-
-func TestDCGMExporterServiceType(t *testing.T) {
-	s := newTestDCGMExporterState(t, false)
-	cr := exporterCR(&nvidiav1.DCGMExporterSpec{
-		ServiceSpec: &nvidiav1.DCGMExporterServiceConfig{
-			Type:                  corev1.ServiceTypeNodePort,
-			InternalTrafficPolicy: ptr.To(corev1.ServiceInternalTrafficPolicyLocal),
-		},
-	})
-
-	objs, err := s.getManifestObjects(context.Background(), cr, draSupportedCatalog())
-	require.NoError(t, err)
-
-	svc := findByKind(objs, "Service")
-	require.NotNil(t, svc)
-	svcType, _, _ := unstructured.NestedString(svc.Object, "spec", "type")
-	assert.Equal(t, "NodePort", svcType)
-	itpValue, _, _ := unstructured.NestedString(svc.Object, "spec", "internalTrafficPolicy")
-	assert.Equal(t, "Local", itpValue)
 }
